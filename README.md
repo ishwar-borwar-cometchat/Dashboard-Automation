@@ -1,6 +1,12 @@
 # CometChat Dashboard — E2E Automation Suite
 
-Playwright + pytest suite for the CometChat Dashboard. **Module 1: Overview** (55 cases, `OV_001`–`OV_055`).
+Playwright + pytest suite for the CometChat Dashboard.
+
+| Module | Cases | IDs |
+|---|---|---|
+| Overview | 55 | `OV_001`–`OV_055` |
+| User & Groups > Users | 92 | `USR_001`–`USR_092` |
+| **Total** | **147** | |
 
 ```
 cometchat-e2e/
@@ -9,7 +15,9 @@ cometchat-e2e/
 ├── run_tests.sh                run suite + build HTML report
 ├── pages/
 │   ├── base_page.py            shared navigation/locator helpers
-│   └── overview_page.py        Overview page object (all selectors live here)
+│   ├── overview_page.py        Overview page object (selectors verified live)
+│   ├── users_page.py           Users list page object (SELECTORS dict at top)
+│   └── user_detail_page.py     User detail: General / Friends / Groups
 ├── tests/
 │   ├── test_01_page_load.py        OV_001 – OV_005
 │   ├── test_02_get_started.py      OV_006 – OV_010
@@ -19,9 +27,21 @@ cometchat-e2e/
 │   ├── test_06_charts.py           OV_028 – OV_034
 │   ├── test_07_quick_links.py      OV_035 – OV_044
 │   ├── test_08_sidebar.py          OV_045 – OV_048
-│   └── test_09_negative.py         OV_049, OV_050, OV_053 – OV_055
+│   ├── test_09_negative.py         OV_049, OV_050, OV_053 – OV_055
+│   ├── test_10_users_list.py       USR_001 – USR_007
+│   ├── test_11_users_search.py     USR_056 – USR_060
+│   ├── test_12_users_filters.py    USR_008 – USR_012, USR_066 – USR_068
+│   ├── test_13_users_pagination.py USR_061 – USR_065
+│   ├── test_14_add_user.py         USR_013 – USR_024, USR_069 – USR_070
+│   ├── test_15_add_user_validation.py USR_046 – USR_051, USR_071 – USR_074
+│   ├── test_16_detail_general.py   USR_025 – USR_032, USR_075 – USR_076, USR_081 – USR_082
+│   ├── test_17_detail_friends.py   USR_033 – USR_037, USR_083 – USR_085
+│   ├── test_18_detail_groups.py    USR_038 – USR_042
+│   ├── test_19_user_actions.py     USR_043 – USR_045, USR_077 – USR_080
+│   └── test_20_users_edge.py       USR_052 – USR_055, USR_086 – USR_092
 ├── utils/
 │   ├── report.py               pass/fail/skip HTML report generator
+│   ├── scan_users_page.js      DevTools snippet to verify Users selectors
 │   ├── make_storage_state.py   build Playwright auth state from a browser export
 │   └── devtools_snippet.js     console snippet to dump localStorage/sessionStorage
 ├── auth/storage_state.json     (you create this — gitignored)
@@ -159,3 +179,57 @@ chart; on this app Recording Minutes was empty, so both executed and passed.
 1. Add `pages/<module>_page.py`.
 2. Add `tests/test_NN_<module>.py` with `@pytest.mark.tc(...)` markers.
 3. Nothing else — collection, result capture and the HTML report pick it up automatically.
+
+
+---
+
+## Users module — read before the first run
+
+### Test data safety
+
+The Users tests create, deactivate and delete real users in your CometChat app.
+Two guards keep that safe:
+
+* **Every user the suite creates is prefixed** (`e2e_...`, override with `CC_E2E_PREFIX`)
+  and deleted in fixture teardown.
+* **Destructive tests refuse to touch anything else.** `test_19_user_actions.py`
+  calls `is_e2e_owned()` before every deactivate/delete and hard-fails rather than
+  acting on a row without the prefix.
+
+Run against a non-production app the first time regardless. If a run is interrupted
+mid-way, leftovers are all prefixed — search `e2e_` and delete.
+
+### Selector status — action needed
+
+Overview's selectors were verified against the live DOM. **The Users page could not
+be scanned** (browser bridge unavailable), so the app-specific selectors are
+*inferred* from what Overview established about this dashboard: Ant Design 5
+(`.ant-table`, `.ant-modal`, `.ant-pagination`, `.ant-tabs`) plus CSS-module class
+names, with controls often rendered as `div[role=button]` rather than `<button>`.
+
+The Ant Design selectors are high confidence. The inferred ones are grouped in
+`SELECTORS` at the top of `pages/users_page.py`, each tagged `# INFERRED`:
+
+```python
+"search_input":    "input[placeholder*='Search' i]",   # INFERRED
+"filter_button":   "button:has-text('Filter')",        # INFERRED
+"add_user_button": "button:has-text('Add User')",      # INFERRED
+"row_actions":     "td:last-child",                    # INFERRED
+"toolbar":         "[class*=toolbar i], ...",          # INFERRED
+```
+
+To correct them: open the Users page, paste `utils/scan_users_page.js` into the
+DevTools console, and reconcile that block with the output. Nothing outside it
+should need changing — that is the whole point of keeping them in one dict.
+
+### What to expect on the first run
+
+Expect failures in the inferred areas — that is the cost of building without a
+scan, and the messages name the selector that missed rather than just asserting
+False. The Ant Design-backed tests (table, tabs, modal, pagination, form errors)
+should hold.
+
+One test is expected to fail for a *real* reason: **USR_081**. It applies the same
+check that caught `OV_052` on Overview, where the Auth Key was rendered into a
+`display:none` node while showing as masked. The Auth Tokens table is likely the
+same component pattern.
