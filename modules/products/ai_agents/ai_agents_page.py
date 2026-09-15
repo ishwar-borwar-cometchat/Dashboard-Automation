@@ -18,6 +18,14 @@ success, navigates the *same* tab straight into the new agent's builder —
 different from Manage Agent's new-tab behavior. `add_agent()` below
 navigates back to the list afterward so its post-condition is always
 "back on the list, new card visible" regardless of that difference.
+
+The edit icon opens an "Edit AI Agent" drawer — the same three fields as
+Add, plus a read-only UID — and stays on the list after Save.
+
+The delete icon has **no confirmation dialog** — clicking it deletes the
+agent immediately (toast: "AI Agent deleted successfully"). Confirmed live
+2026-09-15. `delete_agent()` reflects that: there's no confirm step to
+drive, it just clicks and verifies removal.
 """
 from __future__ import annotations
 
@@ -30,11 +38,14 @@ from core.base_page import BasePage
 SELECTORS = {
     "card": '[class*="aiAgentBuilderCard"]',
     "manage_agent_button": 'button:has-text("Manage Agent")',
+    "delete_icon_button": 'button:has([class*="deleteIcon"])',
+    "edit_icon_button": 'button:has([class*="editIcon"])',
     "add_agent_trigger": 'text="Add AI Agent"',
     "name_input": 'input[placeholder="Enter the agent name"]',
     "icon_input": 'input[placeholder="https://example.com/icon.png"]',
     "description_input": 'textarea[placeholder="Enter the description"]',
     "drawer_add_button": 'button:has-text("Add")',
+    "drawer_save_button": 'button:has-text("Save")',
 }
 
 
@@ -122,3 +133,57 @@ class AIAgentsPage(BasePage):
         new_page = new_page_info.value
         new_page.wait_for_load_state("domcontentloaded")
         return new_page
+
+    # ------------------------------------------------------------------
+    # Edit
+    # ------------------------------------------------------------------
+    def edit_agent(
+        self,
+        current_name: str,
+        new_name: Optional[str] = None,
+        icon_url: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> None:
+        """Open `current_name`'s Edit AI Agent drawer and update the given
+        fields (leaving any field not passed untouched). Stays on the list —
+        unlike add_agent, editing does not navigate into the builder.
+        """
+        card = self.page.locator(SELECTORS["card"], has_text=current_name)
+        card.locator(SELECTORS["edit_icon_button"]).click()
+        self.page.wait_for_timeout(1_000)
+
+        if new_name is not None:
+            field = self.page.locator(SELECTORS["name_input"])
+            field.fill("")
+            field.fill(new_name)
+
+        if icon_url is not None:
+            field = self.page.locator(SELECTORS["icon_input"]).first
+            field.fill("")
+            field.fill(icon_url)
+
+        if description is not None:
+            field = self.page.locator(SELECTORS["description_input"])
+            field.fill("")
+            field.fill(description)
+
+        self.page.get_by_role("button", name="Save", exact=True).click()
+        self.page.wait_for_timeout(2_000)
+
+        expect_name = new_name if new_name is not None else current_name
+        if not self.exists(expect_name):
+            raise RuntimeError(f"'{expect_name}' not found on the AI Agents list after edit_agent()")
+
+    # ------------------------------------------------------------------
+    # Delete
+    # ------------------------------------------------------------------
+    def delete_agent(self, name: str) -> None:
+        """Click `name`'s delete icon. No confirmation dialog appears — this
+        removes the agent immediately, so callers should be sure first.
+        """
+        card = self.page.locator(SELECTORS["card"], has_text=name)
+        card.locator(SELECTORS["delete_icon_button"]).click()
+        self.page.wait_for_timeout(2_000)
+
+        if self.exists(name):
+            raise RuntimeError(f"'{name}' still on the AI Agents list after delete_agent()")
