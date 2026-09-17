@@ -34,11 +34,32 @@ Config (env vars, same convention as conftest.py)
                           sample-app/src/AppConstants.ts) — NOT the same as
                           conftest.py's CC_APP_ID, which targets a different
                           test app used by the pytest suite.
+    CC_SAMPLE_APP_REGION      Region for CC_SAMPLE_APP_ID (default "eu")
+    CC_SAMPLE_APP_AUTH_KEY    Auth Key for CC_SAMPLE_APP_ID — required
+                              whenever CC_SAMPLE_APP_ID is overridden; there
+                              is no safe default for an app this script has
+                              never seen. Or pass --app-id/--region/--auth-key.
+    CC_TARGET_CONVERSATION    Name of the conversation to run checks in
+                              (default "Hiking Group" — the CometChat Sample
+                              App's stock seed group). Must exist in
+                              whichever app CC_SAMPLE_APP_ID points to; its
+                              real GUID is resolved dynamically at the start
+                              of each run, never hardcoded.
     CC_STORAGE_STATE     Dashboard auth state (default auth/storage_state.json)
     CC_HEADLESS          "0" to watch it run (default "1")
     CC_SLOWMO            ms delay between actions when headed (default "0")
     CC_SAMPLE_APP_DIR    Path to the sample app (default set below)
     CC_SAMPLE_APP_PORT   Dev server port (default 3010)
+
+Switching to a different app ID (2026-09-17)
+---------------------------------------------
+Pass --app-id/--region/--auth-key (or the matching env vars above) and this
+script rewrites sample-app/src/AppConstants.ts itself, restarts the dev
+server if one was already running against the old config, and resolves
+CC_TARGET_CONVERSATION's real GUID fresh via the SDK — no manual file edits
+needed. If the named conversation doesn't exist in the new app, pass
+--target-conversation with one that does (a DM or group name visible in
+that app's Sample App sidebar).
 """
 from __future__ import annotations
 
@@ -46,6 +67,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import time
@@ -74,6 +96,15 @@ REPORTS.mkdir(parents=True, exist_ok=True)
 
 BASE_URL = os.environ.get("CC_BASE_URL", "https://app.cometchat.com")
 APP_ID = os.environ.get("CC_SAMPLE_APP_ID", "168258051159eab49")
+# REGION has a convenience default (not a secret). AUTH_KEY does not, and
+# never should — no credential is stored in this file. It's only required
+# when actually switching to a different app than what's already configured
+# on disk in AppConstants.ts; sync_sample_app_config() reads the existing
+# key straight from that file when APP_ID/REGION match what's already
+# there, and fails loudly asking for --auth-key only when they don't.
+REGION = os.environ.get("CC_SAMPLE_APP_REGION", "eu")
+AUTH_KEY = os.environ.get("CC_SAMPLE_APP_AUTH_KEY", "")
+TARGET_CONVERSATION = os.environ.get("CC_TARGET_CONVERSATION", "Hiking Group")
 STORAGE_STATE = os.environ.get("CC_STORAGE_STATE", str(ROOT / "auth" / "storage_state.json"))
 HEADLESS = os.environ.get("CC_HEADLESS", "1") != "0"
 SLOWMO = int(os.environ.get("CC_SLOWMO", "0"))
@@ -86,6 +117,21 @@ SAMPLE_APP_PORT = int(os.environ.get("CC_SAMPLE_APP_PORT", "3010"))
 SAMPLE_APP_URL = f"http://localhost:{SAMPLE_APP_PORT}"
 SAMPLE_APP_START_TIMEOUT = 90
 TEST_IMAGE = str(pathlib.Path(SAMPLE_APP_DIR) / "src" / "assets" / "nancy-grace.png")
+APP_CONSTANTS_PATH = pathlib.Path(SAMPLE_APP_DIR) / "src" / "AppConstants.ts"
+
+# Resolved once per run by open_conversation() (real SDK lookup, never
+# hardcoded) and read by verifiers that need a GUID directly, e.g.
+# verify_disappearing_messages. None until a conversation has been opened.
+CURRENT_GUID: Optional[str] = None
+
+# Resolved once per run by resolve_second_user() — a real UID belonging to
+# someone other than the logged-in test account, for checks that need a
+# second real person (report-user, e2ee's identity lookup). Added
+# 2026-09-17 after report-user/e2ee were caught hardcoding "cometchat-uid-2"
+# from this one app's seed data, which would silently target a nonexistent
+# user on any other app. None until resolved.
+CURRENT_SECOND_UID: Optional[str] = None
+CURRENT_SELF_UID: Optional[str] = None
 
 # (dashboard display name, sample-app kind) — kind selects the check/send
 # logic below. Names/labels are byte-exact against the live DOM.
@@ -122,10 +168,80 @@ def sample_app_is_up() -> bool:
         return False
 
 
+def read_sample_app_config() -> tuple[str, str, str]:
+    """Current (app_id, region, auth_key) actually baked into AppConstants.ts
+    on disk — the source of truth for what the Sample App will connect to,
+    independent of what this script's own APP_ID/REGION/AUTH_KEY vars say.
+    """
+    text = APP_CONSTANTS_PATH.read_text()
+    app_id = re.search(r'APP_ID:\s*"([^"]*)"', text).group(1)
+    region = re.search(r'REGION:\s*"([^"]*)"', text).group(1)
+    auth_key = re.search(r'AUTH_KEY:\s*"([^"]*)"', text).group(1)
+    return app_id, region, auth_key
+
+
+def sync_sample_app_config() -> bool:
+    """Rewrites AppConstants.ts in place if APP_ID/REGION don't already
+    match what's on disk. Returns True if it changed anything, so the
+    caller can force a full dev-server restart rather than trust webpack's
+    hot-reload to safely re-run index.tsx's one-time CometChat.init() call.
+    Fixed 2026-09-17: this used to be a manual, by-hand file edit every time
+    the app under test changed — easy to forget, and easy to leave stale.
+
+    No credential is stored in this script (fixed 2026-09-17, before the
+    first push to the public GitHub remote — an earlier version of this
+    function hardcoded a real Auth Key as AUTH_KEY's default, which would
+    have shipped a live credential in plain text). AUTH_KEY is only required
+    when APP_ID/REGION actually differ from what's already configured on
+    disk — continuing to use whatever app is already set up needs nothing
+    extra, matching the "AppConstants.ts on disk is the source of truth"
+    read in read_sample_app_config().
+    """
+    current_app_id, current_region, current_auth_key = read_sample_app_config()
+    if (current_app_id, current_region) == (APP_ID, REGION):
+        return False
+
+    if not AUTH_KEY:
+        raise RuntimeError(
+            f"CC_SAMPLE_APP_ID/--app-id is {APP_ID!r}, which differs from what's currently "
+            f"configured on disk ({current_app_id!r}) — pass --auth-key (or "
+            "CC_SAMPLE_APP_AUTH_KEY) explicitly for the new app. No default key is stored "
+            "in this script; refusing to guess rather than connect with a stale/wrong one."
+        )
+
+    print(f"[sample-app] config differs — rewriting AppConstants.ts: "
+          f"{current_app_id}/{current_region} -> {APP_ID}/{REGION}")
+    text = APP_CONSTANTS_PATH.read_text()
+    text = re.sub(r'(APP_ID:\s*")[^"]*(")', rf'\g<1>{APP_ID}\g<2>', text, count=1)
+    text = re.sub(r'(REGION:\s*")[^"]*(")', rf'\g<1>{REGION}\g<2>', text, count=1)
+    text = re.sub(r'(AUTH_KEY:\s*")[^"]*(")', rf'\g<1>{AUTH_KEY}\g<2>', text, count=1)
+    APP_CONSTANTS_PATH.write_text(text)
+    return True
+
+
+def _kill_process_on_port(port: int) -> None:
+    try:
+        out = subprocess.check_output(["lsof", "-ti", f":{port}"], text=True).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return
+    for pid in out.splitlines():
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except Exception:
+            pass
+    if out:
+        time.sleep(1)
+
+
 def start_sample_app() -> Optional[subprocess.Popen]:
+    config_changed = sync_sample_app_config()
     if sample_app_is_up():
-        print(f"[sample-app] already running at {SAMPLE_APP_URL}")
-        return None
+        if config_changed:
+            print("[sample-app] config changed — restarting the running dev server to pick it up")
+            _kill_process_on_port(SAMPLE_APP_PORT)
+        else:
+            print(f"[sample-app] already running at {SAMPLE_APP_URL}")
+            return None
     print(f"[sample-app] starting `npm start` on port {SAMPLE_APP_PORT} ...")
     env = os.environ.copy()
     env["BROWSER"] = "none"
@@ -164,17 +280,109 @@ def stop_sample_app(proc: Optional[subprocess.Popen]) -> None:
 # ---------------------------------------------------------------------------
 # Sample app helpers
 # ---------------------------------------------------------------------------
-def open_conversation(page: Page) -> None:
+def resolve_guid_by_name(page: Page, target_name: str) -> Optional[str]:
+    """Resolves target_name to its real GUID/UID via the SDK — groups first,
+    then users — never hardcoded. Added 2026-09-17 so a different app's seed
+    data (different real IDs, possibly not even a group) doesn't require a
+    code change here; only CC_TARGET_CONVERSATION needs to change.
+    """
+    return page.evaluate(
+        """
+        async (name) => {
+            try {
+                const groups = await new CometChat.GroupsRequestBuilder().setLimit(30).build().fetchNext();
+                const g = groups.find(x => x.getName() === name);
+                if (g) return g.getGuid();
+            } catch (e) {}
+            try {
+                const users = await new CometChat.UsersRequestBuilder().setLimit(30).build().fetchNext();
+                const u = users.find(x => x.getName() === name);
+                if (u) return u.getUid();
+            } catch (e) {}
+            return null;
+        }
+        """,
+        target_name,
+    )
+
+
+def resolve_second_user(page: Page) -> tuple[Optional[str], Optional[str]]:
+    """Returns (self_uid, second_uid) — the logged-in account's own UID and
+    a real UID belonging to someone else in this app, both via the SDK.
+    Added 2026-09-17 after report-user/e2ee were caught hardcoding
+    "cometchat-uid-2" (this one app's seed data) as "some other real user" —
+    a different app's real second user has a different, unpredictable UID.
+    second_uid is None if this app genuinely has only one user.
+    """
+    return page.evaluate(
+        """
+        async () => {
+            let selfUid = null;
+            try {
+                const me = await CometChat.getLoggedinUser();
+                selfUid = me ? me.getUid() : null;
+            } catch (e) {}
+            let secondUid = null;
+            try {
+                const users = await new CometChat.UsersRequestBuilder().setLimit(30).build().fetchNext();
+                const other = users.find(u => u.getUid() !== selfUid);
+                secondUid = other ? other.getUid() : null;
+            } catch (e) {}
+            return [selfUid, secondUid];
+        }
+        """
+    )
+
+
+def open_conversation(page: Page, target_name: Optional[str] = None) -> None:
+    """Opens a specific, named conversation rather than trusting `.first` on
+    the conversation list. Fixed 2026-09-17: this app is actively used by
+    other test flows in the same session, which reorders the list by recent
+    activity — `.first` silently landed on whatever conversation someone else
+    had just messaged, so a verifier's composer/attach-menu actions and any
+    GUID-scoped SDK readback (e.g. legacy moderation's checks) could end up
+    targeting two different conversations without either side erroring.
+
+    Also resolves target_name's real GUID, plus a real second user, via the
+    SDK and stashes them on the module-level CURRENT_GUID / CURRENT_SECOND_UID
+    / CURRENT_SELF_UID for verifiers that need one directly (e.g.
+    verify_disappearing_messages, report-user, e2ee) — replaces what used to
+    be hardcoded IDs specific to this one app's seed data.
+    """
+    global CURRENT_GUID, CURRENT_SECOND_UID, CURRENT_SELF_UID
+    if target_name is None:
+        target_name = TARGET_CONVERSATION  # read at call time, not def time — CLI args can override this after import
     page.goto(SAMPLE_APP_URL, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_timeout(2500)
     login_user = page.locator(".cometchat-login__user").first
     if login_user.count() > 0:
         login_user.click()
         page.wait_for_timeout(6000)
-    convo = page.locator(".cometchat-conversations__list-item, .cometchat-conversation").first
-    if convo.count() > 0:
-        convo.click()
+    row = page.locator(".cometchat-conversations__list-item", has_text=target_name).first
+    if row.count() == 0:
+        # fall back to whatever's first rather than hard-failing every kind
+        row = page.locator(".cometchat-conversations__list-item, .cometchat-conversation").first
+    if row.count() > 0:
+        row.click()
         page.wait_for_timeout(1500)
+
+    try:
+        CURRENT_GUID = resolve_guid_by_name(page, target_name)
+    except Exception:
+        CURRENT_GUID = None
+    if CURRENT_GUID is None:
+        print(f"[open_conversation] WARNING: could not resolve a real GUID for "
+              f"{target_name!r} via the SDK — disappearing-messages check will fail "
+              f"cleanly rather than silently target the wrong conversation.")
+
+    try:
+        CURRENT_SELF_UID, CURRENT_SECOND_UID = resolve_second_user(page)
+    except Exception:
+        CURRENT_SELF_UID, CURRENT_SECOND_UID = None, None
+    if CURRENT_SECOND_UID is None:
+        print("[open_conversation] WARNING: could not resolve a second real user via "
+              "the SDK — report-user/e2ee checks that need one will fail cleanly "
+              "rather than silently target a nonexistent UID.")
 
 
 def open_attach_menu(page: Page) -> bool:
@@ -204,13 +412,21 @@ def verify_sticker(page: Page, target_on: bool):
     tiles.first.click()
     page.wait_for_timeout(2500)
     preview = page.locator(".cometchat-conversations__list-item").first.inner_text()
-    return present, "sticker" in preview.lower()
+    # See _verify_collab for why the receipts-error check matters here too.
+    sent = "sticker" in preview.lower() and page.locator(".cometchat-receipts-error").count() == 0
+    return present, sent
 
 
 def verify_poll(page: Page, target_on: bool):
     if not open_attach_menu(page):
         return False, None
-    item = page.get_by_text("Polls", exact=False).first
+    # Scoped to the actual attach action-sheet, not a bare page-wide text
+    # search — fixed 2026-09-17: `get_by_text(..., exact=False)` could match
+    # an identically-worded <label> left inside an OLD, already-sent message
+    # bubble elsewhere in the conversation instead of the live menu item,
+    # producing a false PASS (click "succeeds" on an off-screen stale
+    # element, real menu item never touched).
+    item = page.locator(".cometchat-action-sheet__item", has_text="Polls").first
     present = item.count() > 0
     if not target_on or not present:
         page.keyboard.press("Escape")
@@ -226,14 +442,25 @@ def verify_poll(page: Page, target_on: bool):
     page.wait_for_timeout(300)
     page.get_by_role("button", name="Create").click()
     page.wait_for_timeout(2500)
-    sent = question in page.inner_text("body")
+    # Fixed 2026-09-17: a blocked/failed create leaves the modal open with an
+    # inline "Something went wrong. Please try again." error instead of
+    # closing — check for that first rather than trusting body text, since
+    # the typed question text is still visible inside the open modal either
+    # way (it's the form field's own value, not proof of a successful send).
+    modal_error = page.locator("text=Something went wrong").count() > 0
+    sent = not modal_error and question in page.inner_text("body")
+    if modal_error:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
     return present, sent
 
 
 def _verify_collab(page: Page, target_on: bool, label: str, ready_snippet: str):
     if not open_attach_menu(page):
         return False, None
-    item = page.get_by_text(label, exact=False).first
+    # Same fix as verify_poll: scope to the real attach action-sheet item,
+    # not a bare page-wide text match that can hit a stale old bubble label.
+    item = page.locator(".cometchat-action-sheet__item", has_text=label).first
     present = item.count() > 0
     if not target_on or not present:
         page.keyboard.press("Escape")
@@ -241,7 +468,17 @@ def _verify_collab(page: Page, target_on: bool, label: str, ready_snippet: str):
         return present, None
     item.click()
     page.wait_for_timeout(3000)
-    sent = ready_snippet in page.inner_text("body")
+    # Fixed 2026-09-17: text presence alone is a false-positive risk — an
+    # optimistic local bubble renders the same text whether or not the send
+    # actually succeeded server-side (proven with In-flight Message
+    # Moderation active: a blocked send still showed "Happy Birthday" text,
+    # just with a `cometchat-receipts-error` marker instead of `-sent`).
+    # A fresh context is opened per state in run(), so any error marker seen
+    # here belongs to this action, not stale history.
+    sent = (
+        ready_snippet in page.inner_text("body")
+        and page.locator(".cometchat-receipts-error").count() == 0
+    )
     return present, sent
 
 
@@ -254,13 +491,20 @@ def verify_whiteboard(page: Page, target_on: bool):
 
 
 def verify_link(page: Page, target_on: bool):
+    # The link-preview card is populated by an async out-of-band fetch (the
+    # extension calls out to iframely/opengraph resolution before returning
+    # title/description/image) — confirmed via a direct SDK write+readback
+    # test (2026-09-16) that this can take up to ~15-20s even though the
+    # server accepts the message and returns 200 immediately. A short wait
+    # here reads a real, working card as absent. 20s is deliberately
+    # generous rather than tuned to the minimum that passes.
     before = page.locator('[class*="cometchat-link-bubble__preview-image"]').count()
     composer = page.locator('[contenteditable="true"]').first
     composer.click()
     marker = int(time.time())
     composer.type(f"Automated check {marker} https://www.cometchat.com")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(5000)
+    page.wait_for_timeout(20000)
     after = page.locator('[class*="cometchat-link-bubble__preview-image"]').count()
     present = after > before
     sent = str(marker) in page.inner_text("body")
@@ -306,7 +550,11 @@ def verify_shortcut(page: Page, target_on: bool):
     page.wait_for_timeout(800)
     page.keyboard.press("Enter")
     page.wait_for_timeout(2000)
-    sent = "Happy Birthday" in page.inner_text("body")
+    # See _verify_collab for why the receipts-error check matters here too.
+    sent = (
+        "Happy Birthday" in page.inner_text("body")
+        and page.locator(".cometchat-receipts-error").count() == 0
+    )
     return present, sent
 
 
@@ -374,7 +622,15 @@ def verify_disappearing_messages(page: Page, target_on: bool):
     `present` here means "the schedule call itself was accepted" — this is the
     only signal available for the off state, since there's no UI element to
     check for absence.
+
+    Uses the module-level CURRENT_GUID (resolved dynamically by
+    open_conversation from CC_TARGET_CONVERSATION, not hardcoded) — fixed
+    2026-09-17 so this works against any app's seed data, not just the one
+    with a group literally named "cometchat-guid-1".
     """
+    if not CURRENT_GUID:
+        return False, None
+
     composer = page.locator('[contenteditable="true"]').first
     composer.click()
     marker = f"Disappear check {int(time.time())}"
@@ -389,7 +645,7 @@ def verify_disappearing_messages(page: Page, target_on: bool):
         return messages.map(m => ({ id: m.getId(), text: (m.getText && m.getText()) || null }));
     }
     """
-    msgs = page.evaluate(js_fetch, "cometchat-guid-1")
+    msgs = page.evaluate(js_fetch, CURRENT_GUID)
     match = [m for m in msgs if m.get("text") == marker]
     if not match:
         return False, None
@@ -472,7 +728,16 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
 
                     shot_path = None
                     if screenshot_dir is not None:
-                        page.wait_for_timeout(400)
+                        # Fixed 2026-09-17: without this, a long-history
+                        # conversation (e.g. Hiking Group) can leave the just
+                        # -sent evidence scrolled off the bottom of the
+                        # viewport — the "sent" check still reads it
+                        # correctly from the DOM, but the screenshot itself
+                        # shows stale old messages instead of real proof.
+                        msg_list = page.locator('[class*="cometchat-message-list"]').first
+                        if msg_list.count() > 0:
+                            msg_list.evaluate("el => { el.scrollTop = el.scrollHeight; }")
+                        page.wait_for_timeout(500)
                         shot_path = screenshot_dir / f"{name.replace(' ', '_')}_{state_label}.png"
                         page.screenshot(path=str(shot_path))
 
@@ -517,10 +782,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--only", help="comma-separated extension names to run (default: all)")
     parser.add_argument("--keep-server", action="store_true", help="leave the sample app dev server running after")
+    parser.add_argument("--app-id", help="switch to a different app (overrides CC_SAMPLE_APP_ID)")
+    parser.add_argument("--region", help="region for --app-id (overrides CC_SAMPLE_APP_REGION, default 'eu')")
+    parser.add_argument("--auth-key", help="Auth Key for --app-id (overrides CC_SAMPLE_APP_AUTH_KEY) — "
+                         "required whenever --app-id differs from the EU default")
+    parser.add_argument("--target-conversation", help="conversation name to run checks in "
+                         "(overrides CC_TARGET_CONVERSATION, default 'Hiking Group') — must exist in --app-id's app")
     args = parser.parse_args()
 
-    global KEEP_SERVER
+    global KEEP_SERVER, APP_ID, REGION, AUTH_KEY, TARGET_CONVERSATION
     KEEP_SERVER = args.keep_server
+    if args.app_id:
+        APP_ID = args.app_id
+    if args.region:
+        REGION = args.region
+    if args.auth_key:
+        AUTH_KEY = args.auth_key
+    if args.target_conversation:
+        TARGET_CONVERSATION = args.target_conversation
 
     only = [s.strip() for s in args.only.split(",")] if args.only else None
 

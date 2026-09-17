@@ -72,11 +72,14 @@ from verify_extensions import (  # noqa: E402
     open_conversation,
     open_attach_menu,
     BASE_URL,
-    APP_ID,
     STORAGE_STATE,
     HEADLESS,
     SLOWMO,
 )
+# APP_ID is NOT imported by value above — it's read live via
+# verify_extensions.APP_ID everywhere below instead. A plain `from ... import
+# APP_ID` would snapshot the value at import time and go stale the moment
+# verify_extensions.main()'s --app-id handling reassigns the real one.
 
 # ---------------------------------------------------------------------------
 # Config
@@ -93,7 +96,11 @@ IMG_SAFE = str(TEST_ASSETS_DIR / "Images" / "file_example_JPG_2500kB.jpg")
 IMG_FLAGGED = str(TEST_ASSETS_DIR / "Moderation Images" / "360_F_1752166918_0EWnCyjiExzhsh5nqQRtkZhClgXJDPzc.jpg")
 EICAR_FILE = str(TEST_ASSETS_DIR / "Virus and Malware Files" / "eicar_com.zip")
 
-GUID = "cometchat-guid-1"
+# No hardcoded GUID here (2026-09-17 fix) — every call site below reads
+# verify_extensions.CURRENT_GUID, resolved dynamically by open_conversation()
+# from whatever CC_TARGET_CONVERSATION/--target-conversation names, so this
+# script works against any app's seed data, not just one with a group
+# literally named "cometchat-guid-1".
 
 JS_FETCH = """
 async (guid) => {
@@ -107,31 +114,35 @@ async (guid) => {
 }
 """
 
+# guid is now passed as a real page.evaluate() argument (not baked in via
+# Python string formatting at import time), so it always reflects the
+# currently-resolved conversation, not whatever it was when this module
+# first loaded.
 JS_SEND_TEXT = """
-async (text) => {
+async ([guid, text]) => {
     try {
-        const msg = new CometChat.TextMessage("%s", text, "group");
+        const msg = new CometChat.TextMessage(guid, text, "group");
         const sent = await CometChat.sendMessage(msg);
         return {ok: true, id: sent.getId(), text: sent.getText()};
     } catch (e) {
         return {ok: false, error: (e && (e.message || JSON.stringify(e))) || String(e)};
     }
 }
-""" % GUID
+"""
 
 
 # ---------------------------------------------------------------------------
 # Dashboard control — new Moderation engine master toggle
 # ---------------------------------------------------------------------------
 def get_new_engine_master_state(dash_page: Page) -> bool:
-    dash_page.goto(f"{BASE_URL}/app/{APP_ID}/moderation/rules", wait_until="networkidle", timeout=60_000)
+    dash_page.goto(f"{BASE_URL}/app/{verify_extensions.APP_ID}/moderation/rules", wait_until="networkidle", timeout=60_000)
     dash_page.wait_for_timeout(2500)
     master = dash_page.locator('[class*="ant-switch"]').first
     return master.evaluate('el => el.classList.contains("ant-switch-checked")')
 
 
 def set_new_engine_master_state(dash_page: Page, enabled: bool) -> None:
-    dash_page.goto(f"{BASE_URL}/app/{APP_ID}/moderation/rules", wait_until="networkidle", timeout=60_000)
+    dash_page.goto(f"{BASE_URL}/app/{verify_extensions.APP_ID}/moderation/rules", wait_until="networkidle", timeout=60_000)
     dash_page.wait_for_timeout(2500)
     master = dash_page.locator('[class*="ant-switch"]').first
     if master.evaluate('el => el.classList.contains("ant-switch-checked")') != enabled:
@@ -144,7 +155,7 @@ def set_new_engine_master_state(dash_page: Page, enabled: bool) -> None:
 # criterion (its own Extension Settings gear, NOT the row Status switch)
 # ---------------------------------------------------------------------------
 def _open_inflight_settings_frame(dash_page: Page) -> Frame:
-    dash_page.goto(f"{BASE_URL}/app/{APP_ID}/moderation/legacy", wait_until="domcontentloaded", timeout=60_000)
+    dash_page.goto(f"{BASE_URL}/app/{verify_extensions.APP_ID}/moderation/legacy", wait_until="domcontentloaded", timeout=60_000)
     dash_page.wait_for_timeout(2500)
     row = dash_page.locator("tr", has_text="In-flight Message Moderation")
     row.locator('a[role="button"]').first.click()
@@ -188,8 +199,8 @@ def check_profanity_filter(page: Page, screenshot_dir: Optional[pathlib.Path]) -
     if screenshot_dir is not None:
         page.screenshot(path=str(screenshot_dir / "profanity_filter.png"))
 
-    clean_result = page.evaluate(JS_SEND_TEXT, "SDK re-check: clean message")
-    bad_result = page.evaluate(JS_SEND_TEXT, "SDK re-check: aman blocked test")
+    clean_result = page.evaluate(JS_SEND_TEXT, [verify_extensions.CURRENT_GUID, "SDK re-check: clean message"])
+    bad_result = page.evaluate(JS_SEND_TEXT, [verify_extensions.CURRENT_GUID, "SDK re-check: aman blocked test"])
     return {"clean_send": clean_result, "bad_word_send": bad_result}
 
 
@@ -211,7 +222,7 @@ def check_image_moderation(page: Page, screenshot_dir: Optional[pathlib.Path]) -
     if screenshot_dir is not None:
         page.screenshot(path=str(screenshot_dir / "image_moderation.png"))
 
-    msgs = page.evaluate(JS_FETCH, GUID)
+    msgs = page.evaluate(JS_FETCH, verify_extensions.CURRENT_GUID)
     image_msgs = [m for m in msgs if m.get("type") == "image"]
     return {"image_messages_delivered_in_last_20": len(image_msgs)}
 
@@ -225,13 +236,13 @@ def check_sentiment_analysis(page: Page, screenshot_dir: Optional[pathlib.Path])
     page.wait_for_timeout(2000)
 
     neg_result = page.evaluate(
-        JS_SEND_TEXT, f"I hate this, this trip has been terrible and awful {int(time.time())}"
+        JS_SEND_TEXT, [verify_extensions.CURRENT_GUID, f"I hate this, this trip has been terrible and awful {int(time.time())}"]
     )
 
     if screenshot_dir is not None:
         page.screenshot(path=str(screenshot_dir / "sentiment_analysis.png"))
 
-    msgs = page.evaluate(JS_FETCH, GUID)
+    msgs = page.evaluate(JS_FETCH, verify_extensions.CURRENT_GUID)
     pos_msg = next((m for m in msgs if m["text"] == pos_marker), None)
     sentiment = None
     if pos_msg and pos_msg.get("metadata"):
@@ -259,7 +270,7 @@ def check_virus_scanner(page: Page, screenshot_dir: Optional[pathlib.Path]) -> d
     # initial send — poll a few times before giving up.
     verdict = None
     for _ in range(6):
-        msgs = page.evaluate(JS_FETCH, GUID)
+        msgs = page.evaluate(JS_FETCH, verify_extensions.CURRENT_GUID)
         eicar_msg = next((m for m in msgs if m.get("type") == "file"), None)
         if eicar_msg and eicar_msg.get("metadata"):
             scanner = (
@@ -279,10 +290,10 @@ def check_inflight_moderation(
     dash_page: Page, page: Page, screenshot_dir: Optional[pathlib.Path]
 ) -> dict:
     marker = f"In-flight moderation test message {int(time.time())}"
-    send_result = page.evaluate(JS_SEND_TEXT, marker)
+    send_result = page.evaluate(JS_SEND_TEXT, [verify_extensions.CURRENT_GUID, marker])
 
     dash_page.goto(
-        f"{BASE_URL}/app/{APP_ID}/moderation/in-flight-moderation",
+        f"{BASE_URL}/app/{verify_extensions.APP_ID}/moderation/in-flight-moderation",
         wait_until="domcontentloaded",
         timeout=60_000,
     )
@@ -379,10 +390,28 @@ def run(screenshot_dir: Optional[pathlib.Path] = None) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--keep-server", action="store_true", help="leave the sample app dev server running after")
+    parser.add_argument("--app-id", help="switch to a different app (overrides CC_SAMPLE_APP_ID)")
+    parser.add_argument("--region", help="region for --app-id (overrides CC_SAMPLE_APP_REGION, default 'eu')")
+    parser.add_argument("--auth-key", help="Auth Key for --app-id (overrides CC_SAMPLE_APP_AUTH_KEY) — "
+                         "required whenever --app-id differs from the EU default")
+    parser.add_argument("--target-conversation", help="conversation name to run checks in "
+                         "(overrides CC_TARGET_CONVERSATION, default 'Hiking Group') — must exist in --app-id's app")
     args = parser.parse_args()
 
     if args.keep_server:
         verify_extensions.KEEP_SERVER = True
+    # Assigned on the verify_extensions module directly (not local names) so
+    # every function in this file that reads verify_extensions.APP_ID/etc.
+    # live sees the override — see the import-time-snapshot note near the
+    # top of this file for why a local rebind wouldn't be enough.
+    if args.app_id:
+        verify_extensions.APP_ID = args.app_id
+    if args.region:
+        verify_extensions.REGION = args.region
+    if args.auth_key:
+        verify_extensions.AUTH_KEY = args.auth_key
+    if args.target_conversation:
+        verify_extensions.TARGET_CONVERSATION = args.target_conversation
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
     screenshot_dir = REPORTS / f"{run_id}-screenshots"
