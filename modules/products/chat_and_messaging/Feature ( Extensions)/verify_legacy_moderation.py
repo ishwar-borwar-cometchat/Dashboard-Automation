@@ -23,14 +23,14 @@ instead means:
 Both settings are restored to whatever state they were found in when the
 script finishes, even on failure.
 
-Lives at <repo root>/Automation Script/Extensions/verify_legacy_moderation.py
+Lives at <repo root>/modules/products/chat_and_messaging/Feature ( Extensions)/verify_legacy_moderation.py
 — run it from anywhere, it locates the repo root the same way
 verify_extensions.py does.
 
 Usage
 -----
-    python3 "Automation Script/Extensions/verify_legacy_moderation.py"
-    CC_HEADLESS=0 python3 "Automation Script/Extensions/verify_legacy_moderation.py"
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_legacy_moderation.py"
+    CC_HEADLESS=0 python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_legacy_moderation.py"
 
 Requires
 --------
@@ -59,7 +59,7 @@ import sys
 import time
 from typing import Optional
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 

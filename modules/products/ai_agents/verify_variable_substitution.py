@@ -26,8 +26,8 @@ Full sequence, on a disposable test agent:
 
 Usage
 -----
-    python3 "Automation Script/AI Agents/verify_variable_substitution.py"
-    CC_HEADLESS=0 python3 "Automation Script/AI Agents/verify_variable_substitution.py"
+    python3 "modules/products/ai_agents/verify_variable_substitution.py"
+    CC_HEADLESS=0 python3 "modules/products/ai_agents/verify_variable_substitution.py"
 
 Requires auth/storage_state.json (see README: python3 utils/bootstrap_auth.py).
 """
@@ -39,7 +39,7 @@ import pathlib
 import sys
 import time
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from playwright.sync_api import sync_playwright  # noqa: E402

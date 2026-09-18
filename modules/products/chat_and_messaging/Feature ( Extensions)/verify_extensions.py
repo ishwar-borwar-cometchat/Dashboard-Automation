@@ -9,16 +9,16 @@ delivery (a single tick: left the client, acknowledged by the server).
 
 Every extension is left ON when the script finishes, even on failure.
 
-Lives at <repo root>/Automation Script/Extensions/verify_extensions.py — run
+Lives at <repo root>/modules/products/chat_and_messaging/Feature ( Extensions)/verify_extensions.py — run
 it from anywhere, it locates the repo root (auth/, modules/, reports/) from
 its own file path, not from the working directory.
 
 Usage
 -----
-    python3 "Automation Script/Extensions/verify_extensions.py"                  # everything, headless
-    CC_HEADLESS=0 python3 "Automation Script/Extensions/verify_extensions.py"    # watch it run
-    python3 "Automation Script/Extensions/verify_extensions.py" --only Stickers,Polls
-    python3 "Automation Script/Extensions/verify_extensions.py" --keep-server    # leave npm start running after
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_extensions.py"                  # everything, headless
+    CC_HEADLESS=0 python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_extensions.py"    # watch it run
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_extensions.py" --only Stickers,Polls
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_extensions.py" --keep-server    # leave npm start running after
 
 Requires
 --------
@@ -76,11 +76,11 @@ from typing import Optional
 
 import sys
 
-# This script lives at <repo root>/Automation Script/Extensions/ — two
+# This script lives at <repo root>/modules/products/chat_and_messaging/Feature ( Extensions)/ — four
 # levels below the repo root that `modules/`, `auth/` and `reports/` hang
 # off of, so that's what goes on sys.path and what every default path below
 # is built from (not this file's own directory).
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT))
 
 from playwright.sync_api import sync_playwright, Page

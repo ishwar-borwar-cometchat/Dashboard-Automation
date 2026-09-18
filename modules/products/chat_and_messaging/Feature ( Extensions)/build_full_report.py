@@ -16,7 +16,7 @@ label (renamed to `.glance-method`).
 
 Usage
 -----
-    python3 "Automation Script/Extensions/build_full_report.py" \\
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/build_full_report.py" \\
         --app-id 168258051159eab49 --region eu --display-name "EU (Automation Testing)" \\
         --section-a-json reports/extension_verification/<run_id>.json \\
         --section-a-screenshots reports/extension_verification/<run_id>-screenshots \\

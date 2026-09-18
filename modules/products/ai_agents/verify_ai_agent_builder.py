@@ -20,8 +20,8 @@ throwaway source via `add_source()`, not yet built).
 
 Usage
 -----
-    python3 "Automation Script/AI Agents/verify_ai_agent_builder.py"
-    CC_HEADLESS=0 python3 "Automation Script/AI Agents/verify_ai_agent_builder.py"
+    python3 "modules/products/ai_agents/verify_ai_agent_builder.py"
+    CC_HEADLESS=0 python3 "modules/products/ai_agents/verify_ai_agent_builder.py"
 
 Requires auth/storage_state.json (see README: python3 utils/bootstrap_auth.py).
 """
@@ -33,7 +33,7 @@ import pathlib
 import sys
 import time
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from playwright.sync_api import sync_playwright  # noqa: E402

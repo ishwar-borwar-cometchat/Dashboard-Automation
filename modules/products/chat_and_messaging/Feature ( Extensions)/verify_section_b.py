@@ -19,9 +19,9 @@ only one call.
 
 Usage
 -----
-    python3 "Automation Script/Extensions/verify_section_b.py"
-    python3 "Automation Script/Extensions/verify_section_b.py" --app-id X --region eu --auth-key Y --target-conversation "Some Group"
-    python3 "Automation Script/Extensions/verify_section_b.py" --keep-server
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_section_b.py"
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_section_b.py" --app-id X --region eu --auth-key Y --target-conversation "Some Group"
+    python3 "modules/products/chat_and_messaging/Feature ( Extensions)/verify_section_b.py" --keep-server
 
 Requires the same auth/storage_state.json as verify_extensions.py for the
 two Legacy-Moderation-page reachability checks (Sentiment Analysis, Virus &
@@ -36,7 +36,7 @@ import sys
 import time
 from typing import Optional
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 

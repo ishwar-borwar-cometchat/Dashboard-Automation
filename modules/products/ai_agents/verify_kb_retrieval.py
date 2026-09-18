@@ -36,10 +36,10 @@ Resources" action. See Dashboard-Automation/.claude/settings.local.json.
 
 Usage
 -----
-    python3 "Automation Script/AI Agents/verify_kb_retrieval.py"
-    CC_HEADLESS=0 python3 "Automation Script/AI Agents/verify_kb_retrieval.py"
-    CC_ADD_SOURCE=1 python3 "Automation Script/AI Agents/verify_kb_retrieval.py"   # add+verify a new source (see below)
-    CC_KEEP_AGENT=1 python3 "Automation Script/AI Agents/verify_kb_retrieval.py"   # don't delete the test agent afterward
+    python3 "modules/products/ai_agents/verify_kb_retrieval.py"
+    CC_HEADLESS=0 python3 "modules/products/ai_agents/verify_kb_retrieval.py"
+    CC_ADD_SOURCE=1 python3 "modules/products/ai_agents/verify_kb_retrieval.py"   # add+verify a new source (see below)
+    CC_KEEP_AGENT=1 python3 "modules/products/ai_agents/verify_kb_retrieval.py"   # don't delete the test agent afterward
 
 CC_KEEP_AGENT=1 turns the disposable test agent into a real, permanent one:
 skips delete_agent() in the finally block, and — since a kept agent should
@@ -55,7 +55,7 @@ via manage_agent(), never touches its own Instructions/system prompt, tests
 each source in isolation the same way, and leaves all sources attached at
 the end. No agent is created or deleted either way.
 
-    CC_EXISTING_AGENT="Knowledge Assistant" python3 "Automation Script/AI Agents/verify_kb_retrieval.py"
+    CC_EXISTING_AGENT="Knowledge Assistant" python3 "modules/products/ai_agents/verify_kb_retrieval.py"
 """
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ import pathlib
 import sys
 import time
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from playwright.sync_api import sync_playwright  # noqa: E402
