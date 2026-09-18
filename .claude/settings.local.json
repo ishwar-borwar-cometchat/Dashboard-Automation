@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 \"Automation Script/AI Agents/verify_kb_retrieval.py\":*)"
+    ]
+  }
+}
