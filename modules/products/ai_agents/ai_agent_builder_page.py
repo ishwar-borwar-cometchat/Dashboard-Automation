@@ -31,12 +31,14 @@ Support Agent") was deliberately not exercised here — it was blocked by
 the harness's own shared-resource safety check when first tried, which is
 the right call: toggling a real KB source's attachment is a shared-state
 write, not an isolated one, even though a different agent's toggle is
-scoped to that agent. `attach_source()`/`detach_source()`/`is_attached()`
-below are implemented and DOM-verified structurally, but have not been
-exercised against a real toggle end-to-end. Do that first against a
-throwaway source added by `add_source()` (not yet implemented — the "Add
-Source" flow itself hasn't been investigated) before trusting them in a
-verification script, rather than against an existing shared source.
+scoped to that agent. `attach_source()`/`detach_source()` have since been
+verified end-to-end (2026-09-18) against real shared sources, with the
+harness's shared-resource permission explicitly granted for the specific
+scripts that do it (see Dashboard-Automation/.claude/settings.local.json).
+`add_text_source()` (2026-09-18) adds a brand-new, PERMANENT Text source
+to the shared Knowledge Base — not disposable like a throwaway test
+agent. Don't call it for routine test isolation; only when the intent is
+actually to add real, lasting KB content.
 """
 from __future__ import annotations
 
@@ -51,6 +53,8 @@ SELECTORS = {
     "message_bubble": "[class*='cometchat-message-bubble']",
     "kb_row_for": lambda name: f"xpath=//tr[.//*[contains(text(), {name!r})]]",
     "kb_attach_switch": "button[role='switch']",
+    "kb_add_source_title": 'input[placeholder*="What This Text Represents"]',
+    "kb_add_source_body": ".tiptap.ProseMirror",
 }
 
 
@@ -153,3 +157,31 @@ class AIAgentBuilderPage(BasePage):
             return
         self._kb_row(source_name).locator(SELECTORS["kb_attach_switch"]).click()
         self.page.wait_for_timeout(1_500)
+
+    # ------------------------------------------------------------------
+    # Knowledge Base — add a new Text source (PERMANENT shared write: this
+    # adds a real, persistent source to the app-level Knowledge Base, not
+    # something scoped to the current agent — every agent's builder will
+    # see it afterward, same as the pre-existing sources. Confirmed live
+    # 2026-09-18: "+ Add Source" opens a right-side drawer with Files/Text/
+    # Links/Integrate tabs; the Text tab has a Title input
+    # (placeholder "What This Text Represents eg. Product Documentation")
+    # and a tiptap/ProseMirror rich-text body editor, submitted via an
+    # "Add" button.
+    # ------------------------------------------------------------------
+    def add_text_source(self, title: str, body: str) -> None:
+        self.page.get_by_text("Add Source", exact=True).click()
+        self.page.wait_for_timeout(800)
+        self.page.locator("[data-node-key='text']").click()
+        self.page.wait_for_timeout(500)
+
+        self.page.locator(SELECTORS["kb_add_source_title"]).fill(title)
+        editor = self.page.locator(SELECTORS["kb_add_source_body"])
+        editor.click()
+        self.page.keyboard.type(body)
+
+        self.page.get_by_role("button", name="Add", exact=True).click()
+        self.page.wait_for_timeout(2_000)
+
+        if title not in self.kb_source_names():
+            raise RuntimeError(f"'{title}' not found in Knowledge Base source list after add_text_source()")
