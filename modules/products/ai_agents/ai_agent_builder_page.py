@@ -4,9 +4,10 @@ opened by `AIAgentsPage.manage_agent()` in a new tab, at
 per-agent workspace with its own sidebar (Instructions, Knowledge Base,
 Tools, Card Builder, Variables, MCP, Deploy, Logs).
 
-Only Instructions and Knowledge Base are covered here (the two sections
-investigated 2026-09-18). The rest (Tools, Variables, MCP, Deploy, Logs)
-remain unautomated — extend this file when one of them is next.
+Instructions, Knowledge Base, and Variables (including real @-picker chip
+insertion + runtime substitution verification) are covered here. Tools,
+MCP, Deploy, and Logs remain unautomated — extend this file when one of
+them is next.
 
 **Instructions** (fully covered): a model picker, a contenteditable system
 prompt editor (`data-placeholder="Start typing instructions here..."`),
@@ -55,6 +56,9 @@ SELECTORS = {
     "kb_attach_switch": "button[role='switch']",
     "kb_add_source_title": 'input[placeholder*="What This Text Represents"]',
     "kb_add_source_body": ".tiptap.ProseMirror",
+    "var_name_input": 'input[placeholder*="userName, productId"]',
+    "var_description_input": 'textarea[placeholder="Describe what this variable is used for"]',
+    "var_constant_value_input": 'input[placeholder="Enter the constant value"]',
 }
 
 
@@ -185,3 +189,162 @@ class AIAgentBuilderPage(BasePage):
 
         if title not in self.kb_source_names():
             raise RuntimeError(f"'{title}' not found in Knowledge Base source list after add_text_source()")
+
+    # ------------------------------------------------------------------
+    # Variables — read-only inventory (both Auth and Custom tabs)
+    # ------------------------------------------------------------------
+    def open_variables(self, force: bool = False) -> "AIAgentBuilderPage":
+        self.goto(f"ai-agents/{self.agent_id}/variables", force=force)
+        self.page.wait_for_timeout(2_500)
+        return self
+
+    def open_custom_variables_tab(self) -> None:
+        self.page.get_by_text("Custom Variables", exact=True).click()
+        self.page.wait_for_timeout(1_000)
+
+    def custom_variable_names(self) -> list[str]:
+        """Names of existing custom variables, or [] if none yet (the
+        'No Custom Variables Yet' empty state)."""
+        if self.page.get_by_text("No Custom Variables Yet").count():
+            return []
+        return [t.strip() for t in self.page.locator("table tbody tr td:first-child").all_inner_texts()]
+
+    def custom_variable_usage_status(self, name: str) -> str:
+        """Reads the row's usage badge — "Not Used" (gray) until the
+        variable has actually been referenced in a SAVED, running
+        instruction; flips to "In Use" (green) after — confirmed live
+        2026-09-18. The badge is its own <td>, matched here by position
+        (second-to-last cell, right before the actions column) rather than
+        a hardcoded class name, since the two states use different button
+        classes. Call from the Custom Variables tab. Raises if the row
+        isn't there.
+        """
+        row = self.page.get_by_text(name, exact=True).locator("xpath=ancestor::tr")
+        if not row.count():
+            raise RuntimeError(f"Custom Variable '{name}' not found on the Custom Variables tab")
+        cells = row.locator("td")
+        return cells.nth(cells.count() - 2).inner_text().strip()
+
+    # ------------------------------------------------------------------
+    # Variables — add a Custom Variable (Constant source type only so far;
+    # Message Metadata / User Metadata source types are structurally known
+    # — a "Source Path" dot-path + optional "Default Value" fallback — but
+    # not yet automated).
+    #
+    # SCOPE, confirmed live 2026-09-18: Custom Variables are APP-LEVEL
+    # SHARED, exactly like Knowledge Base sources — NOT per-agent. A
+    # variable created on one agent (even a disposable one, even after
+    # that agent is deleted) appears on every other agent's Variables tab,
+    # verified against both "Knowledge Assistant" and "Weather" (an agent
+    # never otherwise touched). Same shared-resource caution applies as
+    # Knowledge Base: don't add one casually, and clean up test variables
+    # via the row's delete icon (a "Delete Variable" confirm dialog: Yes/No)
+    # rather than leaving them in the real shared list.
+    #
+    # RUNTIME SUBSTITUTION — reliably automatable once the editor is given
+    # real waits between steps (see insert_custom_variable_chip below).
+    # 2026-09-18 history: first attempt looked like a real bug (chip
+    # inserted correctly, but the live reply echoed the literal
+    # "@var-custom:..." text instead of the real value); a careful re-test
+    # exposed the actual problem was this script's own too-fast interaction
+    # with the rich-text editor (visibly duplicated instruction text, a
+    # Save & Run that silently failed to persist) — RETRACTED as a false
+    # positive, confirmed by the user's own manual reproduction working.
+    # A follow-up exploration (same day) proved the mechanism itself is
+    # sound when driven slowly: category click -> item click inserts a real
+    # `data-mention-token` chip (`isVariable: true`, `variableKey: <name>`),
+    # and it survives Save & Run + a fresh page reload intact, no
+    # duplication. See insert_custom_variable_chip() for the real, working
+    # sequence.
+    # ------------------------------------------------------------------
+    def add_custom_variable_constant(self, name: str, value: str, description: str = "") -> None:
+        self.page.get_by_role("button", name="Add Custom Variable").click()
+        self.page.wait_for_timeout(800)
+
+        self.page.locator(SELECTORS["var_name_input"]).fill(name)
+        if description:
+            self.page.locator(SELECTORS["var_description_input"]).fill(description)
+        # Source Type defaults to "Constant" already — no dropdown interaction needed.
+        self.page.locator(SELECTORS["var_constant_value_input"]).fill(value)
+
+        self.page.get_by_role("button", name="Add", exact=True).click()
+        self.page.wait_for_timeout(1_500)
+
+        if name not in self.custom_variable_names():
+            raise RuntimeError(f"'{name}' not found in Custom Variables list after add_custom_variable_constant()")
+
+    def delete_custom_variable(self, name: str) -> None:
+        """Delete a Custom Variable via its row's delete icon + Yes confirm.
+        Call from the Custom Variables tab (open_variables() +
+        open_custom_variables_tab() first). No-ops if the row isn't there.
+        """
+        row = self.page.get_by_text(name, exact=True).locator("xpath=ancestor::tr")
+        if not row.count():
+            return
+        row.locator(".style_deleteIcon__fZNeS").click()
+        self.page.wait_for_timeout(800)
+        yes_btn = self.page.get_by_role("button", name="Yes", exact=True)
+        if yes_btn.count():
+            yes_btn.click()
+            self.page.wait_for_timeout(1_200)
+
+    # ------------------------------------------------------------------
+    # Instructions — insert a REAL @-picker reference chip (not plain text)
+    # for a Custom Variable, then optional trailing text. Confirmed live
+    # 2026-09-18: typing "@" opens a categories menu
+    # (.styles_categoryName__wP5TP -- Tools/MCP Tools/Front-end
+    # Actions/Auth Variables/Custom Variables, each with an item count);
+    # clicking "Custom Variables" drills into its item list
+    # (.styles_itemName__raxTD spans); clicking the variable's name inserts
+    # a `<span data-mention-token='{"isVariable":true,"variableCategory":
+    # "custom","variableKey":"<name>",...}'><strong>@var-custom:<name>
+    # </strong></span>` chip. This is DIFFERENT from typing the raw
+    # "@var-custom:<name>" text, which stays plain text and does NOT
+    # substitute at runtime.
+    #
+    # Timing matters: each step needs a real wait (not zero, not a single
+    # huge sleep at the end) — driving this too fast in one burst is what
+    # produced duplicated text and silently-failed saves in an earlier
+    # attempt (see the retraction note above add_custom_variable_constant).
+    # This sequence (300-1200ms between each of: clear, type prefix, type
+    # "@", click category, click item, type suffix, Save & Run, reload to
+    # verify) was verified to persist correctly with no duplication.
+    # ------------------------------------------------------------------
+    def set_instructions_with_variable_chip(self, prefix: str, var_name: str, suffix: str = "") -> None:
+        editor = self.page.locator(SELECTORS["instructions_editor"])
+        editor.click()
+        self.page.keyboard.press("Control+A")
+        self.page.keyboard.press("Delete")
+        self.page.wait_for_timeout(300)
+
+        if prefix:
+            self.page.keyboard.type(prefix)
+            self.page.wait_for_timeout(300)
+
+        self.page.keyboard.type("@")
+        self.page.wait_for_timeout(1_200)
+
+        self.page.locator(".styles_categoryName__wP5TP", has_text="Custom Variables").first.click()
+        self.page.wait_for_timeout(800)
+
+        item = self.page.get_by_text(var_name, exact=True)
+        if not item.count():
+            raise RuntimeError(f"Custom Variable '{var_name}' not found in the @-picker's Custom Variables category")
+        item.first.click()
+        self.page.wait_for_timeout(800)
+
+        if suffix:
+            self.page.keyboard.type(suffix)
+            self.page.wait_for_timeout(300)
+
+        chip_present = editor.evaluate(
+            "(el, name) => !!el.querySelector(`[data-mention-token*=\"${name}\"]`)", var_name
+        )
+        if not chip_present:
+            raise RuntimeError(
+                f"No real mention-token chip for '{var_name}' found in the editor after the @-picker sequence "
+                "— it may have been inserted as plain text instead of a real reference."
+            )
+
+        self.page.get_by_text("Save & Run", exact=True).click()
+        self.page.wait_for_timeout(4_000)
