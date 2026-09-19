@@ -448,6 +448,31 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
 .rn-result{ font-size:12px; margin-top:6px; color:var(--text); }
 .rn-actions{ display:flex; gap:6px; margin-top:8px; }
 .rn-empty{ font-size:12.5px; color:var(--text-muted); padding:8px 2px; }
+
+.rn-live{ margin-bottom:16px; }
+.rn-live-h{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.rn-live-h h2{ margin:0; flex:1; min-width:0; }
+.rn-dot{ width:9px; height:9px; border-radius:50%; background:var(--accent); display:inline-block; margin-right:6px; animation:rnPulse 1.2s ease-in-out infinite; }
+@keyframes rnPulse{ 0%,100%{ opacity:1; transform:scale(1);} 50%{ opacity:.35; transform:scale(.7);} }
+.rn-times{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:12px 0; }
+.rn-time{ background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:9px 12px; }
+.rn-time .k{ font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:.03em; text-transform:uppercase; }
+.rn-time .v{ font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px; }
+.rn-time .s{ font-size:11px; color:var(--text-faint); margin-top:1px; }
+.rn-bar{ height:8px; border-radius:8px; background:var(--good-track); overflow:hidden; }
+.rn-bar > i{ display:block; height:100%; background:var(--accent); border-radius:8px; transition:width .5s ease; }
+.rn-bar.done > i{ background:var(--good); }
+.rn-steps{ display:flex; flex-direction:column; gap:2px; margin-top:12px; }
+.rn-step{ display:grid; grid-template-columns:22px minmax(0,1fr) auto auto; gap:8px; align-items:center; font-size:12.5px; padding:5px 4px; border-radius:6px; }
+.rn-step[data-s="running"]{ background:var(--accent-soft); font-weight:700; }
+.rn-step .ic{ font-weight:800; text-align:center; color:var(--text-faint); }
+.rn-step[data-s="ok"] .ic{ color:var(--good); } .rn-step[data-s="warn"] .ic{ color:var(--warning); } .rn-step[data-s="fail"] .ic{ color:var(--critical); }
+.rn-step[data-s="running"] .ic{ color:var(--accent); }
+.rn-step .t{ font-variant-numeric:tabular-nums; color:var(--text-muted); }
+.rn-step .e{ font-size:11px; color:var(--text-faint); }
+.rn-log{ margin-top:12px; font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace; background:var(--code-bg); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:8px 10px; max-height:130px; overflow:auto; white-space:pre-wrap; word-break:break-word; color:var(--text-muted); }
+#runTab .rn-tabdot{ margin-left:auto; }
+@media (max-width:820px){ .rn-times{ grid-template-columns:1fr; } }
 @media (max-width:820px){ .rn-grid{ grid-template-columns:1fr; } .rn-row{ grid-template-columns:1fr; } .rn-hist{ max-height:none; } }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .rn-btn.primary, :root:not([data-theme="light"]) .rn-btn.primary:hover{ color:#0d0d16; } }
 :root[data-theme="dark"] .rn-btn.primary, :root[data-theme="dark"] .rn-btn.primary:hover{ color:#0d0d16; }
@@ -583,6 +608,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
         <h1>Run settings</h1>
         <p>Fill this in, press <b>Request run</b>, then tell Claude "run". Claude reads the pending request from here, runs the scripts on that app, and posts the results back on this dashboard.</p>
       </div>
+      <div class="rn-card rn-live" id="rnLive" hidden></div>
       <div class="rn-grid">
         <form class="rn-card" id="rnForm" autocomplete="off" novalidate>
           <h2>New run</h2>
@@ -1882,6 +1908,62 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
     el('runRoot').hidden = true; el('contentRoot').hidden = false;
   }
 
+
+  // Live run panel: shows the running run (or the latest one with timing). Claude writes
+  // progress onto the run doc: startedAt, finishedAt, steps[{name,state,sec,estSec}], logTail[], phase.
+  // The clock ticks locally every second, so it costs no database writes.
+  let liveTimer = null;
+  function fmtDur(sec){ sec = Math.max(0, Math.round(sec || 0)); const m = Math.floor(sec / 60), s = sec % 60; return m + ':' + String(s).padStart(2, '0'); }
+  function liveRun(){
+    const runs = sortedRuns();
+    return runs.find(r => r.status === 'running') || runs.find(r => Array.isArray(r.steps) && r.steps.length) || null;
+  }
+  function renderLive(){
+    const box = el('rnLive'), r = liveRun();
+    const tab = el('runTab'); let dot = tab.querySelector('.rn-tabdot');
+    const running = !!(r && r.status === 'running');
+    if (running && !dot){ dot = document.createElement('span'); dot.className = 'rn-tabdot rn-dot'; tab.appendChild(dot); }
+    if (!running && dot) dot.remove();
+    if (!r || !(r.steps && r.steps.length) && !running){ box.hidden = true; if (liveTimer){ clearInterval(liveTimer); liveTimer = null; } return; }
+    box.hidden = false;
+    const steps = r.steps || [];
+    const end = running ? Date.now() : (r.finishedAt || Date.now());
+    const elapsed = r.startedAt ? (end - r.startedAt) / 1000 : 0;
+    const est = steps.reduce((a, x) => a + (x.estSec || 0), 0);
+    const finished = steps.filter(x => ['ok', 'warn', 'fail', 'skip'].includes(x.state)).length;
+    const cur = steps.find(x => x.state === 'running');
+    const pct = steps.length ? Math.min(100, Math.round((finished + (cur ? 0.5 : 0)) / steps.length * 100)) : 0;
+    const left = est ? est - elapsed : null;
+    const leftTxt = !running ? (r.status === 'done' ? 'Finished' : String(r.status || '')) : (left === null ? 'unknown' : (left > 0 ? '~' + fmtDur(left) : 'taking longer than estimated'));
+    const ic = { ok: '\u2713', warn: '!', fail: '\u2715', running: '\u25B6', skip: '\u2013', pending: '\u00B7' };
+    const stepHtml = steps.map(x => {
+      let t = '';
+      if (x.state === 'running' && x.startedAt) t = fmtDur((Date.now() - x.startedAt) / 1000);
+      else if (x.sec) t = fmtDur(x.sec);
+      return `<div class="rn-step" data-s="${esc(x.state || 'pending')}"><span class="ic">${ic[x.state] || ic.pending}</span><span>${esc(x.name)}${x.note ? ' <span class="e">— ' + esc(x.note) + '</span>' : ''}</span><span class="t" ${x.state === 'running' && x.startedAt ? `data-since="${x.startedAt}"` : ''}>${t}</span><span class="e">${x.estSec ? 'est ' + fmtDur(x.estSec) : ''}</span></div>`;
+    }).join('');
+    box.innerHTML = `
+      <div class="rn-live-h"><h2>${running ? '<span class="rn-dot"></span>' : ''}Live run &middot; App ${esc(r.appId)} &middot; ${esc((r.region || '').toUpperCase())}</h2><span class="rn-pill" data-s="${esc(r.status || 'pending')}">${esc(r.status || 'pending')}</span></div>
+      <div class="rn-meta">${esc(r.phase || (running ? 'Working…' : (r.resultSummary || '')))}</div>
+      <div class="rn-times">
+        <div class="rn-time"><div class="k">Elapsed</div><div class="v" id="rnElapsed" data-start="${r.startedAt || ''}" data-end="${running ? '' : (r.finishedAt || '')}">${fmtDur(elapsed)}</div><div class="s">${running ? 'live clock' : 'total run time'}</div></div>
+        <div class="rn-time"><div class="k">${running ? 'Time left' : 'Status'}</div><div class="v" id="rnLeft" data-est="${est}" style="font-size:${running ? '20' : '15'}px">${esc(leftTxt)}</div><div class="s">${est ? 'estimated total ' + fmtDur(est) : 'no estimate yet'}</div></div>
+        <div class="rn-time"><div class="k">Progress</div><div class="v">${finished} / ${steps.length}</div><div class="s">${cur ? 'now: ' + esc(cur.name) : (running ? 'starting' : 'steps done')}</div></div>
+      </div>
+      <div class="rn-bar ${running ? '' : 'done'}"><i style="width:${running ? pct : 100}%"></i></div>
+      <div class="rn-steps">${stepHtml}</div>
+      ${(r.logTail && r.logTail.length) ? `<div class="rn-log">${esc(r.logTail.slice(-8).join('\n'))}</div>` : ''}`;
+    if (running && !liveTimer){ liveTimer = setInterval(tickLive, 1000); }
+    if (!running && liveTimer){ clearInterval(liveTimer); liveTimer = null; }
+  }
+  function tickLive(){
+    const e = el('rnElapsed'); if (!e || !e.dataset.start || e.dataset.end) return;
+    const sec = (Date.now() - Number(e.dataset.start)) / 1000; e.textContent = fmtDur(sec);
+    const l = el('rnLeft'); const est = Number(l && l.dataset.est);
+    if (l && est){ const left = est - sec; l.textContent = left > 0 ? '~' + fmtDur(left) : 'taking longer than estimated'; }
+    document.querySelectorAll('#rnLive .rn-step .t[data-since]').forEach(t => { t.textContent = fmtDur((Date.now() - Number(t.dataset.since)) / 1000); });
+  }
+
   function setupRun(){
     renderRunCatalog();
     el('rnFilter').addEventListener('input', e => { runState.filter = e.target.value; renderRunCatalog(); });
@@ -1903,6 +1985,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
     db.collection('runs').onSnapshot(snap => {
       runState.runs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (runState.open) renderRunHistory();
+      renderLive();
     }, err => { console.error('runs', err); });
   }
 

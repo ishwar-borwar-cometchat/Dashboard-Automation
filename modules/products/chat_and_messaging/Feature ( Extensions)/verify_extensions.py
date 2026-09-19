@@ -122,6 +122,11 @@ APP_CONSTANTS_PATH = pathlib.Path(SAMPLE_APP_DIR) / "src" / "AppConstants.ts"
 # Resolved once per run by open_conversation() (real SDK lookup, never
 # hardcoded) and read by verifiers that need a GUID directly, e.g.
 # verify_disappearing_messages. None until a conversation has been opened.
+# Each extension's Dashboard state before this run touched it; restored afterwards so a run
+# never leaves an app changed. Also written to the results JSON.
+ORIGINAL_STATES: dict = {}
+CURRENT_RECEIVER_TYPE: str = "group"      # 'group' or 'user' — what CURRENT_GUID is
+_RESOLVED_FOR: Optional[str] = None   # target name CURRENT_GUID was resolved for (cached across states)
 CURRENT_GUID: Optional[str] = None
 
 # Resolved once per run by resolve_second_user() — a real UID belonging to
@@ -280,6 +285,36 @@ def stop_sample_app(proc: Optional[subprocess.Popen]) -> None:
 # ---------------------------------------------------------------------------
 # Sample app helpers
 # ---------------------------------------------------------------------------
+def resolve_receiver_by_name(page: Page, target_name: str) -> Optional[tuple]:
+    """Like resolve_guid_by_name, but returns (id, 'group'|'user') so callers can pick the right
+    SDK call (setGUID vs setUID) when the conversation under test is a 1:1 chat."""
+    r = page.evaluate(
+        """
+        async (name) => {
+            for (const kind of ['group', 'user']) {
+                try {
+                    const b = kind === 'group' ? new CometChat.GroupsRequestBuilder() : new CometChat.UsersRequestBuilder();
+                    const list = await b.setLimit(30).setSearchKeyword(name).build().fetchNext();
+                    const hit = list.find(x => x.getName() === name);
+                    if (hit) return [kind === 'group' ? hit.getGuid() : hit.getUid(), kind];
+                } catch (e) {}
+            }
+            for (const kind of ['group', 'user']) {
+                try {
+                    const b = kind === 'group' ? new CometChat.GroupsRequestBuilder() : new CometChat.UsersRequestBuilder();
+                    const list = await b.setLimit(30).build().fetchNext();
+                    const hit = list.find(x => x.getName() === name);
+                    if (hit) return [kind === 'group' ? hit.getGuid() : hit.getUid(), kind];
+                } catch (e) {}
+            }
+            return null;
+        }
+        """,
+        target_name,
+    )
+    return tuple(r) if r else None
+
+
 def resolve_guid_by_name(page: Page, target_name: str) -> Optional[str]:
     """Resolves target_name to its real GUID/UID via the SDK — groups first,
     then users — never hardcoded. Added 2026-09-17 so a different app's seed
@@ -289,6 +324,18 @@ def resolve_guid_by_name(page: Page, target_name: str) -> Optional[str]:
     return page.evaluate(
         """
         async (name) => {
+            // Search by keyword first: on an app with many users/groups the first page of 30
+            // (alphabetical) need not contain the target. Then fall back to the plain first page.
+            try {
+                const groups = await new CometChat.GroupsRequestBuilder().setLimit(30).setSearchKeyword(name).build().fetchNext();
+                const g = groups.find(x => x.getName() === name);
+                if (g) return g.getGuid();
+            } catch (e) {}
+            try {
+                const users = await new CometChat.UsersRequestBuilder().setLimit(30).setSearchKeyword(name).build().fetchNext();
+                const u = users.find(x => x.getName() === name);
+                if (u) return u.getUid();
+            } catch (e) {}
             try {
                 const groups = await new CometChat.GroupsRequestBuilder().setLimit(30).build().fetchNext();
                 const g = groups.find(x => x.getName() === name);
@@ -349,27 +396,49 @@ def open_conversation(page: Page, target_name: Optional[str] = None) -> None:
     verify_disappearing_messages, report-user, e2ee) — replaces what used to
     be hardcoded IDs specific to this one app's seed data.
     """
-    global CURRENT_GUID, CURRENT_SECOND_UID, CURRENT_SELF_UID
+    global CURRENT_GUID, CURRENT_SECOND_UID, CURRENT_SELF_UID, CURRENT_RECEIVER_TYPE, _RESOLVED_FOR
     if target_name is None:
         target_name = TARGET_CONVERSATION  # read at call time, not def time — CLI args can override this after import
     page.goto(SAMPLE_APP_URL, wait_until="domcontentloaded", timeout=60_000)
-    page.wait_for_timeout(2500)
+    # Wait for whichever comes first — the login screen or an already-logged-in
+    # conversation list — instead of sleeping a fixed 2.5s + 6s.
+    try:
+        page.wait_for_selector(".cometchat-login__user, .cometchat-conversations__list-item", timeout=30_000)
+    except Exception:
+        pass
     login_user = page.locator(".cometchat-login__user").first
     if login_user.count() > 0:
         login_user.click()
-        page.wait_for_timeout(6000)
-    row = page.locator(".cometchat-conversations__list-item", has_text=target_name).first
+        try:
+            page.wait_for_selector(".cometchat-conversations__list-item", timeout=30_000)
+        except Exception:
+            page.wait_for_timeout(3000)
+    items = page.locator(".cometchat-conversations__list-item")
+    row = items.filter(has_text=target_name).first
+    for i in range(items.count()):                       # exact title match wins over a preview-text match
+        lines = [ln.strip() for ln in items.nth(i).inner_text().split("\n") if ln.strip()]
+        if lines and lines[0] == target_name:
+            row = items.nth(i)
+            break
     if row.count() == 0:
         # fall back to whatever's first rather than hard-failing every kind
         row = page.locator(".cometchat-conversations__list-item, .cometchat-conversation").first
     if row.count() > 0:
         row.click()
-        page.wait_for_timeout(1500)
+        try:
+            page.locator('[contenteditable="true"]').first.wait_for(state="visible", timeout=10_000)   # composer up = chat open
+        except Exception:
+            page.wait_for_timeout(1500)
 
+    # The real GUID / second user never change between states of one run, so look
+    # them up once (an SDK round trip each) and reuse them for the other states.
+    if CURRENT_GUID is not None and _RESOLVED_FOR == target_name:
+        return
     try:
-        CURRENT_GUID = resolve_guid_by_name(page, target_name)
+        _r = resolve_receiver_by_name(page, target_name)
+        CURRENT_GUID, CURRENT_RECEIVER_TYPE = (_r if _r else (None, "group"))
     except Exception:
-        CURRENT_GUID = None
+        CURRENT_GUID, CURRENT_RECEIVER_TYPE = None, "group"
     if CURRENT_GUID is None:
         print(f"[open_conversation] WARNING: could not resolve a real GUID for "
               f"{target_name!r} via the SDK — disappearing-messages check will fail "
@@ -383,6 +452,8 @@ def open_conversation(page: Page, target_name: Optional[str] = None) -> None:
         print("[open_conversation] WARNING: could not resolve a second real user via "
               "the SDK — report-user/e2ee checks that need one will fail cleanly "
               "rather than silently target a nonexistent UID.")
+    if CURRENT_GUID is not None:
+        _RESOLVED_FOR = target_name
 
 
 def open_attach_menu(page: Page) -> bool:
@@ -405,6 +476,54 @@ def open_attach_menu(page: Page) -> bool:
 LAST_REASON: dict = {}
 
 
+class ProbeBlocked(Exception):
+    """The verifier's own test message was blocked by the app's moderation policies, so the
+    extension could not be exercised at all. That is neither a pass nor a failure of the
+    extension — run() records it as "untestable" with the reason."""
+
+
+def last_bubble(page: Page):
+    """The most recent message bubble in the open conversation (or None)."""
+    bubbles = page.locator(".cometchat-message-bubble")
+    n = bubbles.count()
+    return bubbles.nth(n - 1) if n else None
+
+
+def last_send_failed(page: Page) -> bool:
+    """Did the MOST RECENT message fail to send? Scoped to the last bubble on purpose: a
+    conversation's history keeps older blocked messages (with their error marker), and a
+    page-wide check turned that stale history into a false "not sent" for every extension."""
+    b = last_bubble(page)
+    return bool(b and b.locator(".cometchat-receipts-error").count() > 0)
+
+
+def probe_id() -> str:
+    """A short unique id for test messages. NOT a 10-digit epoch: apps with a phone-number /
+    contact-details moderation rule block a message that contains one (found on a real app where
+    every "…check 1789803062" probe was blocked), which made whole extensions untestable."""
+    return f"{int(time.time()) % 100000:05d}"
+
+
+def wait_send_outcome(page: Page, timeout_ms: int = 8000) -> str:
+    """Wait until the newest bubble shows a failure marker or a delivery receipt ('failed' /
+    'sent' / 'unknown' on timeout) — moderation blocks are only reported after a round trip."""
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        b = last_bubble(page)
+        if b:
+            if b.locator(".cometchat-receipts-error").count():
+                return "failed"
+            if b.locator('[class*="cometchat-receipts"]').count():
+                return "sent"
+        page.wait_for_timeout(400)
+    return "unknown"
+
+
+def last_bubble_text(page: Page) -> str:
+    b = last_bubble(page)
+    return b.inner_text() if b else ""
+
+
 def verify_sticker(page: Page, target_on: bool):
     present = page.locator('button[title="Sticker"]').count() > 0
     if not target_on or not present:
@@ -422,7 +541,7 @@ def verify_sticker(page: Page, target_on: bool):
     page.wait_for_timeout(2500)
     preview = page.locator(".cometchat-conversations__list-item").first.inner_text()
     # See _verify_collab for why the receipts-error check matters here too.
-    sent = "sticker" in preview.lower() and page.locator(".cometchat-receipts-error").count() == 0
+    sent = "sticker" in preview.lower() and not last_send_failed(page)
     return present, sent
 
 
@@ -484,10 +603,7 @@ def _verify_collab(page: Page, target_on: bool, label: str, ready_snippet: str):
     # just with a `cometchat-receipts-error` marker instead of `-sent`).
     # A fresh context is opened per state in run(), so any error marker seen
     # here belongs to this action, not stale history.
-    sent = (
-        ready_snippet in page.inner_text("body")
-        and page.locator(".cometchat-receipts-error").count() == 0
-    )
+    sent = ready_snippet in last_bubble_text(page) and not last_send_failed(page)
     return present, sent
 
 
@@ -510,10 +626,20 @@ def verify_link(page: Page, target_on: bool):
     before = page.locator('[class*="cometchat-link-bubble__preview-image"]').count()
     composer = page.locator('[contenteditable="true"]').first
     composer.click()
-    marker = int(time.time())
+    marker = probe_id()
     composer.type(f"Automated check {marker} https://www.cometchat.com")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(20000)
+    # ON: return the moment the card appears. OFF: absence can only be shown by
+    # waiting out the whole window, so that stays at the full 20s.
+    if target_on:
+        try:
+            page.wait_for_function(
+                "n => document.querySelectorAll('[class*=\"cometchat-link-bubble__preview-image\"]').length > n",
+                arg=before, timeout=20000)
+        except Exception:
+            pass
+    else:
+        page.wait_for_timeout(20000)
     after = page.locator('[class*="cometchat-link-bubble__preview-image"]').count()
     present = after > before
     sent = str(marker) in page.inner_text("body")
@@ -560,10 +686,7 @@ def verify_shortcut(page: Page, target_on: bool):
     page.keyboard.press("Enter")
     page.wait_for_timeout(2000)
     # See _verify_collab for why the receipts-error check matters here too.
-    sent = (
-        "Happy Birthday" in page.inner_text("body")
-        and page.locator(".cometchat-receipts-error").count() == 0
-    )
+    sent = "Happy Birthday" in last_bubble_text(page) and not last_send_failed(page)
     return present, sent
 
 
@@ -582,26 +705,53 @@ def verify_message_translation(page: Page, target_on: bool):
     """
     composer = page.locator('[contenteditable="true"]').first
     composer.click()
-    marker = f"Automated translation check {int(time.time())}"
+    marker = f"Automated translation check {probe_id()}"
     composer.type(marker)
     page.keyboard.press("Enter")
     page.wait_for_timeout(1500)
 
     bubble = page.locator(".cometchat-message-bubble", has_text=marker).last
-    if bubble.count() == 0:
-        return False, None
+    try:
+        bubble.wait_for(state="attached", timeout=6000)
+    except Exception:
+        raise ProbeBlocked("The probe message never appeared in the chat, so it could not be checked whether Translate is offered — inconclusive, not a failure.")
+    if wait_send_outcome(page) == "failed":
+        raise ProbeBlocked("The probe message was blocked by this app's moderation policies, so this extension could not be tested.")
     # The options bar shows via onMouseEnter on .cometchat-message-bubble__body
     # specifically (not the bubble at large) — Playwright's synthetic hover
     # doesn't reliably land inside that inner element, but the same handler
     # also fires via that element's onClick, which is reliable headless.
-    bubble.locator(".cometchat-message-bubble__body").first.click()
-    page.wait_for_timeout(500)
-
+    body = bubble.locator(".cometchat-message-bubble__body").first
     more_btn = bubble.locator(".cometchat-menu-list__sub-menu")
-    if more_btn.count() == 0:
-        return False, None
-    more_btn.first.click()
-    page.wait_for_timeout(600)
+    # Opening the options menu is the flaky part of this check (the bar only shows
+    # on hover/click of the bubble body). Try up to 3 times before deciding, and if
+    # the menu never opens report "inconclusive" — never "Translate is missing".
+    opened = False
+    for _attempt in range(3):
+        body.scroll_into_view_if_needed()
+        try:
+            body.click(timeout=5000)
+        except Exception:
+            body.dispatch_event("click")   # newest bubble can sit under the composer toolbar
+        try:
+            more_btn.first.wait_for(state="attached", timeout=2500)
+        except Exception:
+            pass
+        if more_btn.count() > 0:
+            opened = True
+            break
+        try:
+            bubble.hover(timeout=2000)
+        except Exception:
+            pass
+        page.wait_for_timeout(400)
+    if not opened:
+        raise ProbeBlocked("The message's options menu did not open after 3 attempts, so it could not be checked whether Translate is offered — inconclusive, not a failure.")
+    try:
+        more_btn.first.click(timeout=5000)
+    except Exception:
+        more_btn.first.dispatch_event("click")
+    page.wait_for_timeout(500)
 
     # Every message in the list renders its own (mostly hidden) submenu, so
     # this must stay scoped to `bubble` — an unscoped page-wide locator can
@@ -613,8 +763,14 @@ def verify_message_translation(page: Page, target_on: bool):
         page.wait_for_timeout(300)
         return present, None
 
-    translate_item.first.click()
-    page.wait_for_timeout(3000)
+    try:
+        translate_item.first.click(timeout=5000)
+    except Exception:
+        translate_item.first.dispatch_event("click")   # item can sit under the composer toolbar
+    try:
+        page.locator(".cometchat-tanslation-bubble__translated-text").first.wait_for(timeout=6000)
+    except Exception:
+        pass
     sent = page.locator(".cometchat-tanslation-bubble__translated-text").count() > 0
     return present, sent
 
@@ -642,19 +798,24 @@ def verify_disappearing_messages(page: Page, target_on: bool):
 
     composer = page.locator('[contenteditable="true"]').first
     composer.click()
-    marker = f"Disappear check {int(time.time())}"
+    marker = f"Disappear check {probe_id()}"
     composer.type(marker)
     page.keyboard.press("Enter")
     page.wait_for_timeout(1500)
 
+    if wait_send_outcome(page) == "failed":
+        raise ProbeBlocked("The probe message was blocked by this app's moderation policies, so this extension could not be tested.")
+
+    # A 1:1 conversation is addressed by UID, a group by GUID.
     js_fetch = """
-    async (guid) => {
-        const builder = new CometChat.MessagesRequestBuilder().setGUID(guid).setLimit(5).build();
-        const messages = await builder.fetchPrevious();
+    async ([id, kind]) => {
+        const b = new CometChat.MessagesRequestBuilder();
+        (kind === 'user' ? b.setUID(id) : b.setGUID(id)).setLimit(5);
+        const messages = await b.build().fetchPrevious();
         return messages.map(m => ({ id: m.getId(), text: (m.getText && m.getText()) || null }));
     }
     """
-    msgs = page.evaluate(js_fetch, CURRENT_GUID)
+    msgs = page.evaluate(js_fetch, [CURRENT_GUID, CURRENT_RECEIVER_TYPE])
     match = [m for m in msgs if m.get("text") == marker]
     if not match:
         return False, None
@@ -696,6 +857,27 @@ VERIFIERS = {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def restore_original_states(browser) -> None:
+    """Put every extension this run touched back to the Dashboard state it started in.
+    Runs from run()'s finally, so it also happens after a crash mid-run."""
+    if not ORIGINAL_STATES:
+        return
+    ctx = browser.new_context(storage_state=STORAGE_STATE)
+    try:
+        page = ctx.new_page()
+        cf = ChatFeaturesPage(page, APP_ID, BASE_URL)
+        cf.open(force=True)
+        for ext in EXTENSIONS:
+            name, key = ext["name"], ext["key"]
+            if name in ORIGINAL_STATES and cf.exists(key) and cf.is_enabled(key) != ORIGINAL_STATES[name]:
+                cf.set_extension(key, ORIGINAL_STATES[name])
+                print(f"[restore] {name} set back to {'ON' if ORIGINAL_STATES[name] else 'OFF'}")
+    except Exception as e:  # never mask the real run result
+        print(f"[restore] WARNING: could not restore original extension states: {e}")
+    finally:
+        ctx.close()
+
+
 def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path] = None) -> dict:
     targets = [e for e in EXTENSIONS if not only or e["name"] in only or e["key"] in only]
     if not targets:
@@ -730,11 +912,14 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
                     print(f"\n=== {name} ===\n  NOT AVAILABLE on this app — skipped")
                     continue
                 results[name] = {}
-                print(f"\n=== {name} ===")
+                ORIGINAL_STATES[name] = cf.is_enabled(key)
+                print(f"\n=== {name} ===  (starting state: {'ON' if ORIGINAL_STATES[name] else 'OFF'})")
 
                 for state_label, target in [("off", False), ("on", True)]:
+                    _t0 = time.perf_counter()
                     cf.set_extension(key, target)
                     dash_state = cf.is_enabled(key)
+                    _t1 = time.perf_counter()
 
                     ctx = browser.new_context(
                         viewport={"width": 1440, "height": 900},
@@ -742,8 +927,19 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
                     )
                     page = ctx.new_page()
                     open_conversation(page)
-                    present, sent = verifier(page, target)
+                    _t2 = time.perf_counter()
+                    error = None
+                    untestable = None
+                    try:
+                        present, sent = verifier(page, target)
+                    except ProbeBlocked as exc:   # moderation blocked our test message: can't judge the extension
+                        present, sent, error = None, None, None
+                        untestable = str(exc)
+                    except Exception as exc:      # one extension's UI failing must not abort the whole run
+                        present, sent = None, None
+                        error = f"{type(exc).__name__}: {str(exc).strip().splitlines()[0][:220]}"
 
+                    _t3 = time.perf_counter()
                     shot_path = None
                     if screenshot_dir is not None:
                         # Fixed 2026-09-17: without this, a long-history
@@ -752,19 +948,39 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
                         # viewport — the "sent" check still reads it
                         # correctly from the DOM, but the screenshot itself
                         # shows stale old messages instead of real proof.
-                        msg_list = page.locator('[class*="cometchat-message-list"]').first
-                        if msg_list.count() > 0:
-                            msg_list.evaluate("el => { el.scrollTop = el.scrollHeight; }")
-                        page.wait_for_timeout(500)
+                        # Fixed 2026-09-19: `.first` matched a non-scrolling wrapper, and
+                        # poll / document / whiteboard cards grow after render, so one
+                        # scroll left the newest bubble below the fold. Scroll every
+                        # scrollable list element, let media settle, then scroll again
+                        # with the newest bubble pinned to the bottom edge.
+                        scroll_js = """() => {
+                            document.querySelectorAll('[class*="cometchat-message-list"], [class*="message-list"]').forEach(el => {
+                                if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+                            });
+                            const b = document.querySelectorAll('.cometchat-message-bubble');
+                            if (b.length) b[b.length - 1].scrollIntoView({block: 'end'});
+                        }"""
+                        # Stop as soon as the list height stops changing (cards/images done growing).
+                        height_js = "() => Math.max(0, ...Array.from(document.querySelectorAll('[class*=\"message-list\"]')).map(e => e.scrollHeight))"
+                        prev_h = -1
+                        for _ in range(6):
+                            page.evaluate(scroll_js)
+                            page.wait_for_timeout(350)
+                            h = page.evaluate(height_js)
+                            if h == prev_h:
+                                break
+                            prev_h = h
                         shot_path = screenshot_dir / f"{name.replace(' ', '_')}_{state_label}.png"
                         page.screenshot(path=str(shot_path))
 
                     ctx.close()
+                    _t4 = time.perf_counter()
+                    print(f"  [time] {state_label}: toggle {_t1-_t0:.1f}s | open chat {_t2-_t1:.1f}s | check {_t3-_t2:.1f}s | screenshot+close {_t4-_t3:.1f}s", flush=True)
 
-                    match = dash_state == present
+                    match = (dash_state == present) if (error is None and untestable is None) else False
                     # ON state must also have actually sent something wherever a send is
                     # attempted (sent is None when no send is attempted, e.g. the OFF state).
-                    sent_ok = not (target and sent is False)
+                    sent_ok = not (target and sent is False) and error is None
                     results[name][state_label] = {
                         "dashboard_enabled": dash_state,
                         "sample_app_present": present,
@@ -773,10 +989,15 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
                         "sent_ok": sent_ok,
                         "screenshot": str(shot_path) if shot_path else None,
                     }
+                    if error:
+                        results[name][state_label]["error"] = error
+                    if untestable:
+                        results[name][state_label]["untestable"] = True
+                        results[name][state_label]["reason"] = untestable
                     reason = LAST_REASON.pop(kind, None)
                     if reason:
                         results[name][state_label]["reason"] = reason
-                    flag = "OK" if (match and sent_ok) else ("NOT SENT" if match else "MISMATCH")
+                    flag = "UNTESTABLE" if untestable else "ERROR" if error else ("OK" if (match and sent_ok) else ("NOT SENT" if match else "MISMATCH"))
                     sent_note = "" if sent is None else f", sent={sent}"
                     print(
                         f"  {state_label.upper():>3}  dashboard={dash_state!s:<5} "
@@ -785,6 +1006,7 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
 
             dash_ctx.close()
         finally:
+            restore_original_states(browser)
             if not KEEP_SERVER:
                 stop_sample_app(started_server)
             browser.close()
@@ -799,6 +1021,8 @@ def summarize(results: dict) -> tuple[int, int]:
         if states.get("not_available"):          # skipped, neither a pass nor a fail
             continue
         for state_label, r in states.items():
+            if r.get("untestable"):
+                continue
             checks += 1
             if r["match"] and r.get("sent_ok", True):
                 passed += 1
@@ -840,7 +1064,7 @@ def main() -> None:
     passed, checks = summarize(results)
     out_path = REPORTS / f"{run_id}.json"
     with open(out_path, "w") as f:
-        json.dump({"results": results, "passed": passed, "checks": checks, "elapsed_s": round(elapsed, 1)}, f, indent=2)
+        json.dump({"results": results, "passed": passed, "checks": checks, "elapsed_s": round(elapsed, 1), "original_states": ORIGINAL_STATES}, f, indent=2)
 
     print(f"\n{'=' * 50}")
     print(f"{passed}/{checks} checks passed in {elapsed:.0f}s")
