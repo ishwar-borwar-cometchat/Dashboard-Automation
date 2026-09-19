@@ -190,6 +190,59 @@ class AIAgentBuilderPage(BasePage):
         if title not in self.kb_source_names():
             raise RuntimeError(f"'{title}' not found in Knowledge Base source list after add_text_source()")
 
+    # Links tab (data-node-key='link'): "Scrape Links" / "Individual Links"
+    # radios (Individual is the default) and one input with a fixed
+    # "https://" prefix (placeholder www.example.com), submitted via
+    # "Add Links". PERMANENT shared write, same caution as add_text_source().
+    def add_link_source(self, url: str) -> None:
+        bare = url.replace("https://", "").replace("http://", "")
+        self.page.get_by_text("Add Source", exact=True).click()
+        self.page.wait_for_timeout(800)
+        self.page.locator("[data-node-key='link']").click()
+        self.page.wait_for_timeout(600)
+        self.page.locator('input[placeholder="www.example.com"]').fill(bare)
+        self.page.get_by_role("button", name="Add Links").click()
+        self.page.wait_for_timeout(2_500)
+        if not any(bare in n for n in self.kb_source_names()):
+            raise RuntimeError(f"'{url}' not found in Knowledge Base source list after add_link_source()")
+
+    # Files tab (data-node-key='file'): drag-and-drop zone, PDF/DOCX/TXT, max
+    # 10 files / 15 MB each, backed by a hidden <input type=file>. PERMANENT
+    # shared write.
+    def add_file_source(self, path: str) -> None:
+        import os
+        self.page.get_by_text("Add Source", exact=True).click()
+        self.page.wait_for_timeout(800)
+        self.page.locator("[data-node-key='file']").click()
+        self.page.wait_for_timeout(600)
+        self.page.locator("input[type='file']").first.set_input_files(path)
+        self.page.wait_for_timeout(1_500)
+        for label in ("Upload", "Add Files", "Add File", "Add"):
+            btn = self.page.get_by_role("button", name=label, exact=True)
+            if btn.count() and btn.first.is_visible():
+                btn.first.click()
+                break
+        self.page.wait_for_timeout(3_000)
+        if os.path.basename(path) not in self.kb_source_names():
+            raise RuntimeError(f"'{os.path.basename(path)}' not found in Knowledge Base source list after add_file_source()")
+
+    def kb_source_indexed(self, source_name: str) -> bool:
+        """True once the source's row shows the 'Indexed' status."""
+        cell = self.page.locator("table tbody tr").filter(has_text=source_name)
+        return cell.count() > 0 and "Indexed" in cell.first.inner_text()
+
+    def wait_sources_indexed(self, names: list, timeout_s: int = 240) -> dict:
+        import time
+        deadline = time.time() + timeout_s
+        state = {n: False for n in names}
+        while time.time() < deadline:
+            self.open_knowledge_base(force=True)
+            state = {n: self.kb_source_indexed(n) for n in names}
+            if all(state.values()):
+                break
+            self.page.wait_for_timeout(8_000)
+        return state
+
     # ------------------------------------------------------------------
     # Variables — read-only inventory (both Auth and Custom tabs)
     # ------------------------------------------------------------------

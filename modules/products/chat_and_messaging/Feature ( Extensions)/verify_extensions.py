@@ -399,6 +399,12 @@ def open_attach_menu(page: Page) -> bool:
 # `sent` is None when the state is OFF (nothing should be sendable) or a
 # send wasn't attempted.
 # ---------------------------------------------------------------------------
+# Optional human-readable reason a verifier wants attached to its result
+# (read and cleared by run()); keeps every verifier's (present, sent) tuple
+# signature unchanged.
+LAST_REASON: dict = {}
+
+
 def verify_sticker(page: Page, target_on: bool):
     present = page.locator('button[title="Sticker"]').count() > 0
     if not target_on or not present:
@@ -407,6 +413,9 @@ def verify_sticker(page: Page, target_on: bool):
     page.wait_for_timeout(1500)
     tiles = page.locator(".cometchat-sticker-keyboard__list-item")
     if tiles.count() == 0:
+        # Extension is ON and the tray opens, but the app has no sticker packs
+        # ("No Stickers Available") — nothing can be sent. That is NOT a pass.
+        LAST_REASON["sticker"] = "Sticker tray is empty (\"No Stickers Available\") — no sticker packs on this app, so nothing could be sent."
         page.keyboard.press("Escape")
         return present, False
     tiles.first.click()
@@ -711,6 +720,15 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
             for ext in targets:
                 name, key, kind = ext["name"], ext["key"], ext["kind"]
                 verifier = VERIFIERS[kind]
+                # Not provisioned on this app (no row on the Dashboard list): it
+                # cannot be toggled, so don't try — record it and move on.
+                if not cf.exists(key):
+                    dash_page.wait_for_timeout(2500)          # one settle-and-recheck, in case the list was still rendering
+                if not cf.exists(key):
+                    results[name] = {"not_available": True,
+                                     "reason": "Not available on this app — not listed on its Extensions page (not enabled from the backend), so it was skipped, not tested."}
+                    print(f"\n=== {name} ===\n  NOT AVAILABLE on this app — skipped")
+                    continue
                 results[name] = {}
                 print(f"\n=== {name} ===")
 
@@ -744,14 +762,21 @@ def run(only: Optional[list[str]] = None, screenshot_dir: Optional[pathlib.Path]
                     ctx.close()
 
                     match = dash_state == present
+                    # ON state must also have actually sent something wherever a send is
+                    # attempted (sent is None when no send is attempted, e.g. the OFF state).
+                    sent_ok = not (target and sent is False)
                     results[name][state_label] = {
                         "dashboard_enabled": dash_state,
                         "sample_app_present": present,
                         "sent": sent,
                         "match": match,
+                        "sent_ok": sent_ok,
                         "screenshot": str(shot_path) if shot_path else None,
                     }
-                    flag = "OK" if match else "MISMATCH"
+                    reason = LAST_REASON.pop(kind, None)
+                    if reason:
+                        results[name][state_label]["reason"] = reason
+                    flag = "OK" if (match and sent_ok) else ("NOT SENT" if match else "MISMATCH")
                     sent_note = "" if sent is None else f", sent={sent}"
                     print(
                         f"  {state_label.upper():>3}  dashboard={dash_state!s:<5} "
@@ -771,9 +796,11 @@ def summarize(results: dict) -> tuple[int, int]:
     checks = 0
     passed = 0
     for name, states in results.items():
+        if states.get("not_available"):          # skipped, neither a pass nor a fail
+            continue
         for state_label, r in states.items():
             checks += 1
-            if r["match"]:
+            if r["match"] and r.get("sent_ok", True):
                 passed += 1
     return passed, checks
 

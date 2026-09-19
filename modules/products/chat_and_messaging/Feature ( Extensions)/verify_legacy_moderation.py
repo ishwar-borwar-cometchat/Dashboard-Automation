@@ -320,6 +320,38 @@ def check_inflight_moderation(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+LEGACY_LABELS = {
+    "profanity-filter": "Profanity Filter",
+    "image-moderation": "Image Moderation",
+    "sentiment-analysis": "Sentiment Analysis",
+    "virus-malware-scanner": "Virus & Malware Scanner",
+    "human-moderation": "In-flight Message Moderation",
+}
+
+
+def legacy_roster(dash_page: Page) -> set:
+    """Which of the 5 Legacy Moderation extensions have a row on THIS app's
+    Legacy Moderation page. An extension that is not enabled from the backend
+    has no row at all — it can't be toggled or tested, so it is skipped and
+    reported as "Not available on this app". Polls for up to ~15s so a slow
+    page load isn't mistaken for an empty roster.
+    """
+    dash_page.goto(f"{BASE_URL}/app/{verify_extensions.APP_ID}/moderation/legacy", wait_until="domcontentloaded", timeout=60_000)
+    present: set = set()
+    for _ in range(10):
+        dash_page.wait_for_timeout(1500)
+        body = dash_page.inner_text("body")
+        present = {label for label in LEGACY_LABELS.values() if label in body}
+        if present:
+            break
+    return present
+
+
+def _not_available(label: str) -> dict:
+    return {"not_available": True,
+            "reason": f"Not available on this app — {label} is not listed on its Legacy Moderation page (not enabled from the backend), so it was skipped, not tested."}
+
+
 def run(screenshot_dir: Optional[pathlib.Path] = None) -> dict:
     if screenshot_dir is not None:
         screenshot_dir.mkdir(parents=True, exist_ok=True)
@@ -335,48 +367,60 @@ def run(screenshot_dir: Optional[pathlib.Path] = None) -> dict:
             dash_ctx = browser.new_context(storage_state=STORAGE_STATE)
             dash_page = dash_ctx.new_page()
 
-            original_new_engine_state = get_new_engine_master_state(dash_page)
-            original_inflight_all_messages = get_inflight_all_messages_state(dash_page)
-            print(f"[state] new-engine master was {'ON' if original_new_engine_state else 'OFF'}")
-            print(f"[state] in-flight 'All Messages' was {'ON' if original_inflight_all_messages else 'OFF'}")
+            roster = legacy_roster(dash_page)
+            print(f"[roster] Legacy Moderation rows on this app: {sorted(roster) or 'none'}")
+            has_inflight = LEGACY_LABELS["human-moderation"] in roster
 
-            set_new_engine_master_state(dash_page, False)
-            set_inflight_all_messages_state(dash_page, False)
+            original_new_engine_state = get_new_engine_master_state(dash_page)
+            original_inflight_all_messages = get_inflight_all_messages_state(dash_page) if has_inflight else None
+            print(f"[state] new-engine master was {'ON' if original_new_engine_state else 'OFF'}")
+            if has_inflight:
+                print(f"[state] in-flight 'All Messages' was {'ON' if original_inflight_all_messages else 'OFF'}")
+
+            if roster:
+                set_new_engine_master_state(dash_page, False)
+                if has_inflight:
+                    set_inflight_all_messages_state(dash_page, False)
 
             ctx = browser.new_context(viewport={"width": 1440, "height": 900})
             page = ctx.new_page()
             open_conversation(page)
 
             print("\n=== Profanity Filter ===")
-            results["profanity-filter"] = check_profanity_filter(page, screenshot_dir)
+            results["profanity-filter"] = check_profanity_filter(page, screenshot_dir) if LEGACY_LABELS["profanity-filter"] in roster else _not_available(LEGACY_LABELS["profanity-filter"])
             print(json.dumps(results["profanity-filter"], indent=2, default=str))
 
             print("\n=== Image Moderation ===")
-            results["image-moderation"] = check_image_moderation(page, screenshot_dir)
+            results["image-moderation"] = check_image_moderation(page, screenshot_dir) if LEGACY_LABELS["image-moderation"] in roster else _not_available(LEGACY_LABELS["image-moderation"])
             print(json.dumps(results["image-moderation"], indent=2, default=str))
 
             print("\n=== Sentiment Analysis ===")
-            results["sentiment-analysis"] = check_sentiment_analysis(page, screenshot_dir)
+            results["sentiment-analysis"] = check_sentiment_analysis(page, screenshot_dir) if LEGACY_LABELS["sentiment-analysis"] in roster else _not_available(LEGACY_LABELS["sentiment-analysis"])
             print(json.dumps(results["sentiment-analysis"], indent=2, default=str))
 
             print("\n=== Virus & Malware Scanner ===")
-            results["virus-malware-scanner"] = check_virus_scanner(page, screenshot_dir)
+            results["virus-malware-scanner"] = check_virus_scanner(page, screenshot_dir) if LEGACY_LABELS["virus-malware-scanner"] in roster else _not_available(LEGACY_LABELS["virus-malware-scanner"])
             print(json.dumps(results["virus-malware-scanner"], indent=2, default=str))
 
             print("\n=== In-Flight Message Moderation ===")
-            set_inflight_all_messages_state(dash_page, True)
-            results["human-moderation"] = check_inflight_moderation(dash_page, page, screenshot_dir)
+            if has_inflight:
+                set_inflight_all_messages_state(dash_page, True)
+                results["human-moderation"] = check_inflight_moderation(dash_page, page, screenshot_dir)
+            else:
+                results["human-moderation"] = _not_available(LEGACY_LABELS["human-moderation"])
             print(json.dumps(results["human-moderation"], indent=2, default=str))
 
             ctx.close()
 
-            print("\n[restore] setting in-flight 'All Messages' back to "
-                  f"{'ON' if original_inflight_all_messages else 'OFF'}")
-            set_inflight_all_messages_state(dash_page, original_inflight_all_messages)
+            if has_inflight:
+                print("\n[restore] setting in-flight 'All Messages' back to "
+                      f"{'ON' if original_inflight_all_messages else 'OFF'}")
+                set_inflight_all_messages_state(dash_page, original_inflight_all_messages)
 
-            print("[restore] setting new-engine master back to "
-                  f"{'ON' if original_new_engine_state else 'OFF'}")
-            set_new_engine_master_state(dash_page, original_new_engine_state)
+            if roster:
+                print("[restore] setting new-engine master back to "
+                      f"{'ON' if original_new_engine_state else 'OFF'}")
+                set_new_engine_master_state(dash_page, original_new_engine_state)
 
             dash_ctx.close()
         finally:

@@ -67,7 +67,9 @@ body{ background:linear-gradient(180deg,var(--page),var(--page-2)); background-a
 .mono{font-family:'JetBrains Mono',ui-monospace,Consolas,monospace;}
 a{color:var(--accent);text-decoration:none;}
 a:hover{color:var(--accent-strong);text-decoration:underline;}
-::selection{background:var(--accent-soft);}
+::selection{ background:rgba(124,127,240,.55); color:inherit; }
+::selection{ background:color-mix(in srgb, var(--accent) 50%, transparent); color:inherit; }
+:root[data-theme="dark"] ::selection{ background:rgba(124,127,240,.6); }
 svg text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
 
 .shell{ display:flex; min-height:100vh; align-items:stretch; }
@@ -358,8 +360,31 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
 .note-editor-head{ display:flex; align-items:center; gap:10px; }
 #noteTitle{ flex:1; min-width:0; font:inherit; font-size:16px; font-weight:700; color:var(--text); background:none; border:none; border-bottom:1px solid var(--border-soft); padding:4px 2px 8px; outline:none; }
 #noteTitle:focus{ border-bottom-color:var(--accent); }
-#noteBody{ width:100%; flex:1; min-height:52vh; resize:vertical; font:inherit; font-size:13.5px; line-height:1.6; color:var(--text); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:12px 14px; outline:none; }
+#noteBody{ width:100%; flex:1; min-height:52vh; overflow:auto; font-size:13.5px; line-height:1.65; color:var(--text); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:12px 14px; outline:none; word-wrap:break-word; }
+#noteBody, #noteBody *, #noteTitle, #noteLinkInput{ -webkit-user-select:text; user-select:text; }
+#noteBody{ cursor:text; -webkit-user-modify:read-write; }
 #noteBody:focus{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+#noteBody:empty::before{ content:attr(data-placeholder); color:var(--text-faint); pointer-events:none; }
+#noteBody h2{ font-size:17px; margin:14px 0 6px; }
+#noteBody p, #noteBody div{ margin:0 0 6px; }
+#noteBody ul, #noteBody ol{ margin:4px 0 8px; padding-left:24px; }
+#noteBody blockquote{ margin:8px 0; padding:4px 12px; border-left:3px solid var(--accent); color:var(--text-muted); background:var(--surface); border-radius:0 8px 8px 0; }
+#noteBody code{ font-family:'JetBrains Mono',ui-monospace,Consolas,monospace; font-size:12px; background:var(--accent-soft); color:var(--accent); padding:1px 5px; border-radius:5px; }
+#noteBody pre{ font-family:'JetBrains Mono',ui-monospace,Consolas,monospace; font-size:12px; background:var(--surface); border:1px solid var(--border-soft); border-radius:8px; padding:10px 12px; overflow:auto; white-space:pre-wrap; }
+#noteBody mark{ background:#ffe08a; color:#2a2200; padding:0 2px; border-radius:3px; }
+#noteBody a{ color:var(--accent); text-decoration:underline; }
+#noteBody img{ max-width:100%; height:auto; border-radius:8px; border:1px solid var(--border-soft); margin:4px 0; }
+#noteBody hr{ border:none; border-top:1px solid var(--border); margin:12px 0; }
+.note-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:4px; padding:6px; background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); }
+.nt-btn{ font:inherit; font-size:12.5px; font-weight:700; min-width:30px; height:30px; padding:0 8px; color:var(--text); background:none; border:1px solid transparent; border-radius:7px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+.nt-btn:hover{ background:var(--surface); border-color:var(--border); }
+.nt-btn:active{ background:var(--accent-soft); }
+.nt-btn svg{ width:15px; height:15px; stroke:currentColor; }
+.nt-sep{ width:1px; height:20px; background:var(--border); margin:0 4px; }
+.nt-link{ display:none; align-items:center; gap:4px; }
+.nt-link.open{ display:inline-flex; }
+.nt-link input{ font:inherit; font-size:12.5px; width:220px; height:30px; padding:0 8px; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:7px; outline:none; }
+.nt-link input:focus{ border-color:var(--accent); }
 .notes-status{ font-size:11.5px; font-weight:600; color:var(--text-faint); white-space:nowrap; }
 .notes-status[data-kind="saving"]{ color:var(--warning-ink, #a96f00); }
 .notes-status[data-kind="saved"]{ color:var(--good); }
@@ -454,7 +479,29 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
             <span class="notes-status" id="notesStatus" aria-live="polite"></span>
             <button class="notes-del" id="noteDelete" type="button">Delete</button>
           </div>
-          <textarea id="noteBody" placeholder="Start typing… (autosaves)" maxlength="100000" spellcheck="true"></textarea>
+          <div class="note-toolbar" id="noteToolbar" role="toolbar" aria-label="Formatting">
+            <button class="nt-btn" data-cmd="bold" type="button" title="Bold (Ctrl/Cmd+B)"><b>B</b></button>
+            <button class="nt-btn" data-cmd="italic" type="button" title="Italic (Ctrl/Cmd+I)"><i>I</i></button>
+            <button class="nt-btn" data-cmd="underline" type="button" title="Underline (Ctrl/Cmd+U)"><u>U</u></button>
+            <button class="nt-btn" data-cmd="strikeThrough" type="button" title="Strikethrough"><s>S</s></button>
+            <button class="nt-btn" data-cmd="highlight" type="button" title="Highlight">&#9646;</button>
+            <span class="nt-sep"></span>
+            <button class="nt-btn" data-cmd="h2" type="button" title="Heading">H</button>
+            <button class="nt-btn" data-cmd="ul" type="button" title="Bulleted list">&bull; List</button>
+            <button class="nt-btn" data-cmd="ol" type="button" title="Numbered list">1. List</button>
+            <button class="nt-btn" data-cmd="quote" type="button" title="Quote">&ldquo;</button>
+            <button class="nt-btn" data-cmd="code" type="button" title="Inline code (select text first)">&lt;/&gt;</button>
+            <span class="nt-sep"></span>
+            <button class="nt-btn" data-cmd="link" type="button" title="Link (select text first)">Link</button>
+            <span class="nt-link" id="noteLinkBox"><input type="text" id="noteLinkInput" placeholder="https://… then Enter" autocomplete="off"></span>
+            <button class="nt-btn" data-cmd="image" type="button" title="Insert image (or paste one)">Image</button>
+            <button class="nt-btn" data-cmd="hr" type="button" title="Divider">&mdash;</button>
+            <span class="nt-sep"></span>
+            <button class="nt-btn" data-cmd="clear" type="button" title="Clear formatting">Clear</button>
+            <button class="nt-btn" data-cmd="copy" type="button" title="Copy the whole note">Copy</button>
+            <input type="file" id="noteImageFile" accept="image/*" hidden>
+          </div>
+          <div id="noteBody" contenteditable="true" spellcheck="true" data-placeholder="Start typing… (autosaves). Select text to format it; paste screenshots directly."></div>
         </div>
       </div>
     </div>
@@ -658,7 +705,7 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     }
     return `<div class="tcase" data-status="${d.status}">
       <div class="tcase-head"><h3>${esc(d.name)}</h3>${badge}<span class="status-glyph ${d.status}">${d.status==='pass'?'✓ pass':'! flag'}</span></div>
-      <div class="tcase-body"><p>${note}</p></div>
+      <div class="tcase-body"><p>${note}</p>${d.note?`<p>${esc(d.note)}</p>`:''}</div>
       ${shotsHtml}
     </div>`;
   }
@@ -703,7 +750,8 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
   }
 
   function renderUiAction(d){
-    const shotHtml = d.screenshot ? `<div class="shots-pair" style="grid-template-columns:1fr;"><div class="shot"><img src="/_blob/${esc(d.screenshot)}" alt="${esc(d.name)} evidence" loading="lazy"></div></div>` : '';
+    const many = Array.isArray(d.screenshots) && d.screenshots.length;
+    const shotHtml = many ? `<div class="${d.screenshots.length > 3 ? 'shots-quad' : 'shots-trio'}">${d.screenshots.map(x => `<div class="shot"><div class="shot-label">${esc(x.label)}</div><img src="/_blob/${esc(x.id)}" alt="${esc(d.name)} ${esc(x.label)}" loading="lazy"></div>`).join('')}</div>` : d.screenshot ? `<div class="shots-pair" style="grid-template-columns:1fr;"><div class="shot"><img src="/_blob/${esc(d.screenshot)}" alt="${esc(d.name)} evidence" loading="lazy"></div></div>` : '';
     const diff = `<div class="uiaction-diff">
         <div class="row"><span class="k">before</span><span class="v">${esc((d.before||[]).join(', ') || '(none)')}</span></div>
         <div class="row"><span class="k">after</span><span class="v">${esc((d.after||[]).join(', ') || '(none)')}</span></div>
@@ -717,7 +765,8 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
   }
 
   function renderAgentInstructions(d){
-    const shotHtml = d.screenshot ? `<div class="shots-pair" style="grid-template-columns:1fr;"><div class="shot"><img src="/_blob/${esc(d.screenshot)}" alt="${esc(d.name)} evidence" loading="lazy"></div></div>` : '';
+    const many = Array.isArray(d.screenshots) && d.screenshots.length;
+    const shotHtml = many ? `<div class="${d.screenshots.length > 3 ? 'shots-quad' : 'shots-trio'}">${d.screenshots.map(x => `<div class="shot"><div class="shot-label">${esc(x.label)}</div><img src="/_blob/${esc(x.id)}" alt="${esc(d.name)} ${esc(x.label)}" loading="lazy"></div>`).join('')}</div>` : d.screenshot ? `<div class="shots-pair" style="grid-template-columns:1fr;"><div class="shot"><img src="/_blob/${esc(d.screenshot)}" alt="${esc(d.name)} evidence" loading="lazy"></div></div>` : '';
     return `<div class="tcase" data-status="${d.status}">
       <div class="tcase-head"><h3>${esc(d.name)}</h3><span class="toggle-track">${esc(d.model||'model')}</span><span class="status-glyph ${d.status}">${d.status==='pass'?'✓ pass':'! flag'}</span></div>
       <div class="tcase-body"><p>${esc(d.note||'')}</p></div>
@@ -1015,7 +1064,7 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     renderModuleTabs(); renderAppSelect(); renderSectionNav(); render();
 
     unsubApps = db.collection('modules/' + moduleId + '/apps').onSnapshot(snap => {
-      state.apps = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.apps = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.last_run_at || '').localeCompare(String(a.last_run_at || '')));   // newest run first
       renderAppSelect();
       if (!state.currentAppId && state.apps.length){
         selectApp(moduleId, state.apps[0].id);
@@ -1139,16 +1188,67 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
 
 
   // ---------------------------------------------------------------------
-  // Notes: free-form scratchpad, one db doc per note under "notes/<id>".
-  // Autosaves (debounced) as you type; every open view stays in sync.
+  // Notes: rich-text scratchpad, one db doc per note under "notes/<id>":
+  // { title, body (plain text, for previews), html (sanitized rich text),
+  //   createdAt, updatedAt }. Images live in the artifact's asset store and
+  // are referenced as /_blob/<id>. Autosaves (debounced); views stay in sync.
   // ---------------------------------------------------------------------
-  const notesState = { notes: [], activeId: null, open: false, drafts: {}, timers: {}, saving: {}, resave: {}, delTimer: null, ready: false };
+  const notesState = { notes: [], activeId: null, open: false, drafts: {}, timers: {}, saving: {}, resave: {}, delTimer: null, savedRange: null, assets: undefined };
+  const NOTE_MAX_HTML = 180000;
+
+  // ---- sanitizer: notes are shared, untrusted data -> whitelist on the way in AND out ----
+  const NOTE_KEEP = new Set(['B','STRONG','I','EM','U','S','STRIKE','DEL','MARK','CODE','PRE','BLOCKQUOTE','H1','H2','H3','P','DIV','BR','UL','OL','LI','A','IMG','HR']);
+  const NOTE_DROP = new Set(['SCRIPT','STYLE','IFRAME','OBJECT','EMBED','NOSCRIPT','TEMPLATE','SVG','MATH','LINK','META','TITLE','HEAD','TEXTAREA','SELECT','BUTTON','INPUT']);
+  function safeHref(h){
+    const v = (h || '').trim();
+    return /^(https?:\/\/|mailto:)/i.test(v) ? v : '';
+  }
+  function sanitizeNoteHtml(html){
+    const doc = new DOMParser().parseFromString('<body>' + (html || '') + '</body>', 'text/html');
+    const out = document.createElement('div');
+    const walk = (src, dst) => {
+      for (const n of Array.from(src.childNodes)){
+        if (n.nodeType === 3){ dst.appendChild(document.createTextNode(n.nodeValue)); continue; }
+        if (n.nodeType !== 1) continue;
+        const tag = n.tagName;
+        if (NOTE_DROP.has(tag)) continue;
+        if (!NOTE_KEEP.has(tag)){ walk(n, dst); continue; }   // unknown wrapper: keep its text/children
+        if (tag === 'IMG'){
+          const src2 = n.getAttribute('src') || '';
+          if (!/^\/_blob\/[0-9a-f]{16,64}$/.test(src2)) continue;
+          const img = document.createElement('img'); img.setAttribute('src', src2); img.setAttribute('alt', (n.getAttribute('alt') || '').slice(0, 200));
+          dst.appendChild(img); continue;
+        }
+        const el2 = document.createElement(tag.toLowerCase());
+        if (tag === 'A'){
+          const h = safeHref(n.getAttribute('href'));
+          if (!h){ walk(n, dst); continue; }
+          el2.setAttribute('href', h); el2.setAttribute('target', '_blank'); el2.setAttribute('rel', 'noopener noreferrer');
+        }
+        walk(n, el2);
+        dst.appendChild(el2);
+      }
+    };
+    walk(doc.body, out);
+    return out.innerHTML;
+  }
+  function plainToHtml(text){
+    return (text || '').split('\n').map(l => '<div>' + (l ? esc(l) : '<br>') + '</div>').join('');
+  }
+  function htmlToPlain(html){
+    const d = document.createElement('div'); d.innerHTML = html;
+    d.querySelectorAll('br').forEach(b => b.replaceWith('\n'));
+    d.querySelectorAll('p,div,li,h1,h2,h3,blockquote,pre').forEach(b => b.appendChild(document.createTextNode('\n')));
+    return d.textContent.replace(/\n{3,}/g, '\n\n').trim();
+  }
+  function noteHtml(n){ return n.html ? sanitizeNoteHtml(n.html) : plainToHtml(n.body); }
+  function notePlain(n){ return n.body != null ? n.body : htmlToPlain(n.html || ''); }
 
   function noteTime(ms){
     if (!ms) return '';
     try { return new Date(ms).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }); } catch(e){ return ''; }
   }
-  function setNotesStatus(txt, kind){ const s = el('notesStatus'); s.textContent = txt; s.dataset.kind = kind || ''; }
+  function setNotesStatus(txt, kind){ const s2 = el('notesStatus'); s2.textContent = txt; s2.dataset.kind = kind || ''; }
   function sortedNotes(){ return notesState.notes.slice().sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0)); }
   function activeNote(){ return notesState.notes.find(n => n.id === notesState.activeId) || null; }
 
@@ -1160,7 +1260,7 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     html += list.map(n => {
       const d = notesState.drafts[n.id];
       const title = ((d ? d.title : n.title) || '').trim() || 'Untitled note';
-      const body = ((d ? d.body : n.body) || '').replace(/\s+/g, ' ').trim();
+      const body = ((d ? d.body : notePlain(n)) || '').replace(/\s+/g, ' ').trim();
       return `<button class="note-item ${n.id === notesState.activeId ? 'active' : ''}" data-id="${esc(n.id)}" type="button"><span class="nt">${esc(title)}</span><span class="np">${esc(body.slice(0, 70)) || '&nbsp;'}</span><span class="nd">${esc(noteTime(n.updatedAt))}</span></button>`;
     }).join('');
     box.innerHTML = html;
@@ -1172,41 +1272,44 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     const n = activeNote();
     const ed = el('noteEditor');
     el('notesBlank').hidden = !!n;
-    if (!n){
-      ed.hidden = true;
-      return;
-    }
+    if (!n){ ed.hidden = true; return; }
     ed.hidden = false;
     if (force){ const db_ = el('noteDelete'); clearTimeout(notesState.delTimer); db_.classList.remove('confirm'); db_.textContent = 'Delete'; }
     if (notesState.drafts[n.id]) return;               // never overwrite what's being typed
     const t = el('noteTitle'), b = el('noteBody');
+    // A live update must never touch the editor while you're in it (it would drop your selection/caret).
+    if (!force && (document.activeElement === b || document.activeElement === t)) return;
+    if (!force){ const sl = window.getSelection(); if (sl && !sl.isCollapsed && b.contains(sl.anchorNode)) return; }
     if (force || t.value !== (n.title || '')) t.value = n.title || '';
-    if (force || b.value !== (n.body || '')) b.value = n.body || '';
+    const want = noteHtml(n);
+    if (force || sanitizeNoteHtml(b.innerHTML) !== want) b.innerHTML = want;
   }
 
   function refreshNotesUi(forceEditor){
     renderNotesList();
     loadEditor(forceEditor);
-    if (!activeNote()) {
-      setNotesStatus('', '');
-    }
+    if (!activeNote()) setNotesStatus('', '');
   }
 
   async function saveNote(id){
     const draft = notesState.drafts[id];
     if (!draft) return;
+    if (draft.html.length > NOTE_MAX_HTML){
+      if (id === notesState.activeId) setNotesStatus('Note is too large to save — split it into two notes', 'error');
+      return;
+    }
     if (notesState.saving[id]){ notesState.resave[id] = true; return; }
     notesState.saving[id] = true;
-    const sent = { title: draft.title, body: draft.body };
+    const sent = { title: draft.title, body: draft.body, html: draft.html };
     const cur = notesState.notes.find(n => n.id === id);
     try {
       await db.doc('notes/' + id).set({
-        title: sent.title, body: sent.body,
+        title: sent.title, body: sent.body, html: sent.html,
         createdAt: (cur && cur.createdAt) || Date.now(),
         updatedAt: Date.now(),
       });
       const d = notesState.drafts[id];
-      if (d && d.title === sent.title && d.body === sent.body) delete notesState.drafts[id];
+      if (d && d.title === sent.title && d.html === sent.html) delete notesState.drafts[id];
       if (id === notesState.activeId && !notesState.drafts[id]) setNotesStatus('Saved ' + noteTime(Date.now()), 'saved');
     } catch (e) {
       const ro = e && e.code === 'invalid_argument';
@@ -1231,7 +1334,10 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
   function onNoteInput(){
     const id = notesState.activeId;
     if (!id) return;
-    notesState.drafts[id] = { title: el('noteTitle').value, body: el('noteBody').value };
+    const ed = el('noteBody');
+    if (!ed.textContent.trim() && !ed.querySelector('img,hr') && ed.innerHTML !== '') ed.innerHTML = '';   // lets the placeholder show
+    const html = sanitizeNoteHtml(ed.innerHTML);
+    notesState.drafts[id] = { title: el('noteTitle').value, html, body: htmlToPlain(html) };
     renderNotesList();
     queueSave(id);
   }
@@ -1250,10 +1356,9 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     const ref = db.collection('notes').doc();
     const now = Date.now();
     try {
-      await ref.set({ title: 'Untitled note', body: '', createdAt: now, updatedAt: now });
+      await ref.set({ title: 'Untitled note', body: '', html: '', createdAt: now, updatedAt: now });
       notesState.activeId = ref.id;
-      // The snapshot listener adds it to notesState.notes; make sure the UI shows it right away.
-      if (!notesState.notes.find(n => n.id === ref.id)) notesState.notes.push({ id: ref.id, title: 'Untitled note', body: '', createdAt: now, updatedAt: now });
+      if (!notesState.notes.find(n => n.id === ref.id)) notesState.notes.push({ id: ref.id, title: 'Untitled note', body: '', html: '', createdAt: now, updatedAt: now });
       refreshNotesUi(true);
       el('noteTitle').focus(); el('noteTitle').select();
     } catch (e) {
@@ -1286,6 +1391,160 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     }
   }
 
+  // ---- rich-text commands ----
+  function noteSelectionInEditor(){
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    return el('noteBody').contains(r.commonAncestorContainer) ? r : null;
+  }
+  function restoreNoteRange(){
+    const ed = el('noteBody');
+    if (document.activeElement === ed && noteSelectionInEditor()) return;   // toolbar clicks never take focus, so nothing to restore
+    ed.focus();
+    if (notesState.savedRange){ const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(notesState.savedRange); }
+  }
+  function insertNoteHtml(html){ document.execCommand('insertHTML', false, html); }
+  function wrapSelection(tag){
+    const ed = el('noteBody');
+    const r = noteSelectionInEditor();
+    if (!r){ setNotesStatus('Select some text first', ''); return; }
+    // Already inside <mark>/<code>: clicking again removes it.
+    const startEl = r.startContainer.nodeType === 3 ? r.startContainer.parentElement : r.startContainer;
+    const existing = startEl && startEl.closest && startEl.closest(tag);
+    if (existing && ed.contains(existing)){
+      preserveSel(() => {
+        while (existing.firstChild) existing.parentNode.insertBefore(existing.firstChild, existing);
+        existing.remove();
+      });
+      return;
+    }
+    if (r.collapsed){ setNotesStatus('Select some text first', ''); return; }
+    if (tag === 'mark'){
+      // hiliteColor keeps lists/blocks intact across a multi-line selection; then normalise its <span style> to <mark>.
+      document.execCommand('styleWithCSS', false, true);
+      document.execCommand('hiliteColor', false, '#ffe08a');
+      document.execCommand('styleWithCSS', false, false);
+      preserveSel(() => ed.querySelectorAll('span[style*="background"]').forEach(sp => {
+        const m = document.createElement('mark');
+        while (sp.firstChild) m.appendChild(sp.firstChild);
+        sp.replaceWith(m);
+      }));
+      return;
+    }
+    const frag = r.cloneContents();
+    if (frag.querySelector('div,p,li,ul,ol,h1,h2,h3,blockquote,pre,hr')){ setNotesStatus('Select text within a single line for code', ''); return; }
+    const tmp = document.createElement('div'); tmp.appendChild(frag);
+    insertNoteHtml('<' + tag + '>' + sanitizeNoteHtml(tmp.innerHTML) + '</' + tag + '>');
+  }
+  function toggleBlock(tag){
+    const cur = (document.queryCommandValue('formatBlock') || '').toLowerCase().replace(/[<>]/g, '');
+    document.execCommand('formatBlock', false, cur === tag ? 'div' : tag);
+  }
+  async function noteAssets(){
+    if (notesState.assets === undefined){
+      try { notesState.assets = await window.claude.use('assets'); } catch(e){ notesState.assets = null; }
+    }
+    return notesState.assets;
+  }
+  async function insertNoteImage(file){
+    if (!file || !/^image\//.test(file.type)){ setNotesStatus('That file is not an image', 'error'); return; }
+    const assets = await noteAssets();
+    if (!assets){ setNotesStatus('Images are unavailable for this view', 'error'); return; }
+    setNotesStatus('Uploading image…', 'saving');
+    try {
+      const res = await assets.upload(file);
+      restoreNoteRange();
+      insertNoteHtml('<img src="/_blob/' + res.id + '" alt="">');
+      onNoteInput();
+    } catch (e) {
+      setNotesStatus(e && e.code === 'quota_exceeded' ? 'Image storage is full' : "Couldn't upload the image", 'error');
+    }
+  }
+  async function copyNote(){
+    const ed = el('noteBody');
+    const text = ed.innerText;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch(e){}
+    if (!ok){
+      const r = document.createRange(); r.selectNodeContents(ed);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      try { ok = document.execCommand('copy'); } catch(e){}
+    }
+    setNotesStatus(ok ? 'Copied' : 'Select the text and press Ctrl/Cmd+C', ok ? 'saved' : '');
+  }
+  function applyLink(){
+    const inp = el('noteLinkInput');
+    let url = inp.value.trim();
+    if (url && !/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;
+    const ok = safeHref(url);
+    el('noteLinkBox').classList.remove('open'); inp.value = '';
+    if (!ok){ restoreNoteRange(); return; }
+    restoreNoteRange();
+    document.execCommand('createLink', false, ok);
+    onNoteInput();
+  }
+  // Run fn (which moves/wraps nodes) and put the selection back on the same text nodes afterwards.
+  function preserveSel(fn){
+    const sel = window.getSelection();
+    const st = sel && sel.rangeCount ? [sel.anchorNode, sel.anchorOffset, sel.focusNode, sel.focusOffset] : null;
+    fn();
+    if (st && st[0] && st[2] && st[0].isConnected && st[2].isConnected){ try { sel.setBaseAndExtent(st[0], st[1], st[2], st[3]); } catch(e){} }
+  }
+  function noteOffsets(ed){
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !ed.contains(sel.anchorNode) || !ed.contains(sel.focusNode)) return null;
+    const r = sel.getRangeAt(0);
+    const pre = document.createRange(); pre.selectNodeContents(ed);
+    pre.setEnd(r.startContainer, r.startOffset); const s0 = pre.toString().length;
+    pre.setEnd(r.endContainer, r.endOffset); const e0 = pre.toString().length;
+    return { s: s0, e: e0 };
+  }
+  function setNoteOffsets(ed, s0, e0){
+    const w = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT);
+    // A boundary offset belongs to the END of the earlier text node and the START of the next one:
+    // a selection start must take the later node (else it lands on the previous line), an end the earlier.
+    const pos = (off, isStart) => { let n, left = off, last = null; w.currentNode = ed; while ((n = w.nextNode())){ const len = n.nodeValue.length; last = n; if (isStart ? left < len : left <= len) return [n, left]; left -= len; } return last ? [last, last.nodeValue.length] : null; };
+    const a = pos(s0, s0 !== e0), z = pos(e0, false);
+    if (!a || !z) return;
+    const r = document.createRange(); r.setStart(a[0], a[1]); r.setEnd(z[0], z[1]);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+  function runNoteCmd(cmd){
+    const ed = el('noteBody');
+    if (cmd === 'copy'){ copyNote(); return; }
+    if (cmd === 'image'){ const r = noteSelectionInEditor(); if (r) notesState.savedRange = r.cloneRange(); el('noteImageFile').click(); return; }
+    if (cmd === 'link'){
+      const r = noteSelectionInEditor();
+      if (!r || r.collapsed){ setNotesStatus('Select the text to link first', ''); return; }
+      notesState.savedRange = r.cloneRange();
+      el('noteLinkBox').classList.add('open'); el('noteLinkInput').focus();
+      return;
+    }
+    restoreNoteRange();
+    document.execCommand('styleWithCSS', false, false);
+    // Block commands (lists, heading, quote) can throw a collapsed caret back to the line start (nodes get replaced),
+    // so remember the caret as a character offset and put it back afterwards.
+    const bsel = window.getSelection();
+    const keep = (bsel && bsel.rangeCount && bsel.isCollapsed && ed.contains(bsel.anchorNode)) ? { node: bsel.anchorNode, off: bsel.anchorOffset, o: noteOffsets(ed) } : null;
+    switch (cmd){
+      case 'bold': case 'italic': case 'underline': case 'strikeThrough': document.execCommand(cmd, false, null); break;
+      case 'ul': document.execCommand('insertUnorderedList', false, null); break;
+      case 'ol': document.execCommand('insertOrderedList', false, null); break;
+      case 'h2': toggleBlock('h2'); break;
+      case 'quote': toggleBlock('blockquote'); break;
+      case 'code': wrapSelection('code'); break;
+      case 'highlight': wrapSelection('mark'); break;
+      case 'hr': insertNoteHtml('<hr><div><br></div>'); break;
+      case 'clear': document.execCommand('removeFormat', false, null); document.execCommand('formatBlock', false, 'div'); break;
+    }
+    if (keep){
+      if (keep.node.isConnected && ed.contains(keep.node)) { try { window.getSelection().collapse(keep.node, keep.off); } catch(e){} }
+      else if (keep.o) setNoteOffsets(ed, keep.o.s, keep.o.e);
+    }
+    onNoteInput();
+  }
+
   function openNotes(){
     notesState.open = true;
     document.body.classList.add('notes-open');
@@ -1304,15 +1563,38 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
   }
 
   function setupNotes(){
+    const ed = el('noteBody');
     el('notesTab').addEventListener('click', () => { notesState.open ? closeNotes() : openNotes(); });
     // Picking any module leaves Notes (capture phase, so the module's own handler still runs after).
     el('moduleTabs').addEventListener('click', () => { if (notesState.open) closeNotes(); }, true);
     el('noteTitle').addEventListener('input', onNoteInput);
-    el('noteBody').addEventListener('input', onNoteInput);
+    ed.addEventListener('input', onNoteInput);
     el('noteDelete').addEventListener('click', deleteNote);
+    // Toolbar: mousedown must not steal the selection from the editor.
+    const tb = el('noteToolbar');
+    tb.addEventListener('mousedown', e => { if (e.target.closest('.nt-btn')) e.preventDefault(); });
+    tb.querySelectorAll('.nt-btn').forEach(b => b.addEventListener('click', () => runNoteCmd(b.dataset.cmd)));
+    el('noteLinkInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ e.preventDefault(); applyLink(); }
+      if (e.key === 'Escape'){ el('noteLinkBox').classList.remove('open'); restoreNoteRange(); }
+    });
+    el('noteImageFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) insertNoteImage(f); });
+    // Paste: images upload; rich text is sanitized; plain text stays plain.
+    ed.addEventListener('paste', e => {
+      const cd = e.clipboardData; if (!cd) return;
+      const img = Array.from(cd.items || []).find(i => i.kind === 'file' && /^image\//.test(i.type));
+      if (img){ e.preventDefault(); notesState.savedRange = noteSelectionInEditor() && noteSelectionInEditor().cloneRange(); insertNoteImage(img.getAsFile()); return; }
+      const h = cd.getData('text/html');
+      if (h){ e.preventDefault(); insertNoteHtml(sanitizeNoteHtml(h)); onNoteInput(); }
+    });
+    ed.addEventListener('drop', e => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f && /^image\//.test(f.type)){ e.preventDefault(); notesState.savedRange = null; insertNoteImage(f); }
+    });
+    document.addEventListener('selectionchange', () => { const r = noteSelectionInEditor(); if (r) notesState.savedRange = r.cloneRange(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) flushNotes(); });
     window.addEventListener('pagehide', flushNotes);
-    el('noteBody').addEventListener('blur', flushNotes);
+    ed.addEventListener('blur', flushNotes);
     el('noteTitle').addEventListener('blur', flushNotes);
 
     db.collection('notes').onSnapshot(snap => {

@@ -200,9 +200,21 @@ SCRIPT = """
 """
 
 
+def _not_available_card(name: str, reason: str) -> str:
+    return f'''<div class="ext">
+      <div class="ext-head">
+        <div class="ext-name"><h3>{esc(name)}</h3></div>
+        <span class="pill warn">NOT AVAILABLE ON THIS APP</span>
+      </div>
+      <p style="padding:0 16px 14px;color:var(--muted);">{esc(reason)}</p>
+    </div>'''
+
+
 def build_section_a_card(name: str, states: dict, screenshots_dir: pathlib.Path) -> str:
+    if states.get("not_available"):
+        return _not_available_card(name, states.get("reason", "Not available on this app."))
     off_r, on_r = states["off"], states["on"]
-    all_match = off_r["match"] and on_r["match"]
+    all_match = off_r["match"] and on_r["match"] and off_r.get("sent_ok", True) and on_r.get("sent_ok", True)
     verdict = '<span class="pill ok">PASS</span>' if all_match else '<span class="pill warn">SEE NOTE</span>'
     off_shot = screenshots_dir / f"{name.replace(' ', '_')}_off.png"
     on_shot = screenshots_dir / f"{name.replace(' ', '_')}_on.png"
@@ -253,6 +265,8 @@ LEGACY_MOD_META = {
 
 def build_legacy_mod_card(key: str, data: dict, screenshots_dir: pathlib.Path) -> str:
     display, shot_name, summary = LEGACY_MOD_META[key]
+    if data.get("not_available"):
+        return _not_available_card(display, data.get("reason", "Not available on this app."))
     shot_path = screenshots_dir / shot_name
     shot_b64 = b64_file(shot_path) if shot_path.exists() else None
 

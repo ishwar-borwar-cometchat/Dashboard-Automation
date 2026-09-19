@@ -101,7 +101,7 @@ class AIAgentsPage(BasePage):
         Icon URL is left at its pre-filled default when `icon_url` is None.
         Raises if `name` isn't on the list afterward.
         """
-        self.page.get_by_text("Add AI Agent", exact=False).click()
+        self.page.get_by_text("Add AI Agent", exact=False).first.click()
         self.page.wait_for_timeout(1_000)
 
         self.page.locator(SELECTORS["name_input"]).fill(name)

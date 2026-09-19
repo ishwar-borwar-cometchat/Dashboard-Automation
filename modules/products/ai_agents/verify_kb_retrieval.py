@@ -128,6 +128,45 @@ NO_MATCH_PHRASES = [
 ]
 
 
+SEED_LINK = "https://www.cometchat.com/docs"
+SEED_TEXT_TITLE = "Push Notifications"
+SEED_TEXT_BODY = "Real-time alerts for new messages, calls, and events routed through FCM or APNs."
+SEED_PDF = os.environ.get("CC_SEED_PDF", "/Users/admin/Documents/Testing Document/Complete_Manual-Testing.pdf")
+
+
+def seed_standard_sources(builder: AIAgentBuilderPage, new_page, screenshot_dir: pathlib.Path) -> dict:
+    """Standing rule (2026-09-19): if an app's Knowledge Base has NO sources,
+    add the standard set (Website link, Text note, PDF) and wait for them to
+    be Indexed before testing — never skip retrieval as "not applicable".
+    These are PERMANENT shared writes on the target app.
+    """
+    added: list[str] = []
+    errors: dict[str, str] = {}
+    steps = [
+        ("text", SEED_TEXT_TITLE, lambda: builder.add_text_source(SEED_TEXT_TITLE, SEED_TEXT_BODY)),
+        ("link", SEED_LINK, lambda: builder.add_link_source(SEED_LINK)),
+    ]
+    if os.path.exists(SEED_PDF):
+        steps.append(("file", os.path.basename(SEED_PDF), lambda: builder.add_file_source(SEED_PDF)))
+    else:
+        errors["file"] = f"PDF not found at {SEED_PDF} (set CC_SEED_PDF)"
+    for kind, label, fn in steps:
+        try:
+            builder.open_knowledge_base(force=True)
+            fn()
+            added.append(label)
+            new_page.screenshot(path=str(screenshot_dir / f"seed_{kind}_added.png"), full_page=True)
+            print("Seeded source:", label)
+        except Exception as e:  # keep going — report exactly what failed
+            errors[kind] = str(e)[:300]
+            print("SEED FAILED:", kind, "|", str(e)[:200])
+    names = builder.kb_source_names() if added else []
+    indexed = builder.wait_sources_indexed(builder.kb_source_names() or names) if added else {}
+    new_page.screenshot(path=str(screenshot_dir / "seed_all_indexed.png"), full_page=True)
+    print("Indexed state:", indexed)
+    return {"added": added, "errors": errors, "indexed": indexed}
+
+
 def ensure_only_attached(
     builder: AIAgentBuilderPage, new_page, source_names: list[str], target: str, toggle_on_shot: pathlib.Path
 ) -> dict:
@@ -262,6 +301,10 @@ def run(screenshot_dir: pathlib.Path) -> dict:
 
             builder.open_knowledge_base(force=True)
             source_names = builder.kb_source_names()
+            if not source_names:
+                results["seeded_sources"] = seed_standard_sources(builder, new_page, screenshot_dir)
+                builder.open_knowledge_base(force=True)
+                source_names = builder.kb_source_names()
 
             for i, source in enumerate(source_names):
                 print(f"\n--- Source {i+1}/{len(source_names)}: {source} ---")
