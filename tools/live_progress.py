@@ -98,7 +98,7 @@ def main():
             phase = (f"Finished: {len(done)} of {len(names)} steps" if exited
                      else (f"Running step {len(done) + 1} of {len(names)}: {cur}" if cur else "Starting…"))
             tail = [re.sub(r"\s+$", "", l)[:160] for l in lines
-                    if re.match(r"===|\s+(OFF|ON) |\d+/\d+ checks|\[restore\]", l)][-8:]
+                    if re.match(r"===|\s+(OFF|ON|DENY|ALLOW)\b|\d+/\d+ checks|\[restore\]", l)][-8:]
             json.dump({"steps": steps, "phase": phase, "logTail": tail}, open(a.out, "w"))
             print(f"progress {len(done)}/{len(names)} exited={exited}", flush=True)
             if exited: break
