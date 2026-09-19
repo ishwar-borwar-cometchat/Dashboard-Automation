@@ -394,6 +394,77 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
 .notes-del.confirm{ color:#fff; background:var(--critical); border-color:var(--critical); }
 .notes-blank{ padding:40px 10px; text-align:center; color:var(--text-muted); font-size:13px; }
 @media (max-width:820px){ .notes-wrap{ grid-template-columns:1fr; } .notes-list{ max-height:220px; } }
+
+/* --- Run settings (form that queues a run request for Claude) --- */
+#runTab .ico svg{ width:14px; height:14px; stroke:var(--sb-text-dim); }
+body.run-open #runTab{ background:var(--sb-active); color:var(--sb-active-text); font-weight:700; box-shadow:0 4px 14px rgba(0,0,0,.18); }
+body.run-open #runTab .ico svg{ stroke:var(--sb-active-text); }
+body.run-open #moduleTabs .module-tab.active{ background:none; color:var(--sb-text); font-weight:600; box-shadow:none; }
+body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim); }
+.rn-grid{ display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:16px; align-items:start; }
+.rn-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-sm); padding:16px 18px 18px; }
+.rn-card h2{ font-size:14px; margin:0 0 4px; }
+.rn-card .rn-sub{ font-size:12px; color:var(--text-muted); margin:0 0 12px; }
+.rn-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.rn-field{ display:flex; flex-direction:column; gap:5px; margin-bottom:12px; }
+.rn-field label, .rn-legend{ font-size:11.5px; font-weight:700; color:var(--text-muted); letter-spacing:.02em; }
+.rn-field input[type=text], .rn-field select, .rn-field textarea{ font:inherit; font-size:13px; color:var(--text); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:9px 11px; outline:none; width:100%; }
+.rn-field textarea{ min-height:64px; resize:vertical; }
+.rn-field input:focus, .rn-field select:focus, .rn-field textarea:focus{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+.rn-hint{ font-size:11.5px; color:var(--text-faint); }
+.rn-seg{ display:inline-flex; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; }
+.rn-seg label{ font-size:12.5px; font-weight:700; padding:8px 14px; cursor:pointer; color:var(--text-muted); background:var(--surface-alt); border-right:1px solid var(--border); }
+.rn-seg label:last-child{ border-right:none; }
+.rn-seg input{ position:absolute; opacity:0; pointer-events:none; }
+.rn-seg input:checked + span{ color:var(--accent); }
+.rn-seg label:has(input:checked){ background:var(--accent-soft); color:var(--accent); }
+.rn-group{ margin-bottom:10px; }
+.rn-group-t{ font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); margin:6px 0 4px; }
+.rn-check{ display:flex; align-items:flex-start; gap:8px; font-size:12.5px; padding:5px 2px; cursor:pointer; }
+.rn-check input{ margin-top:3px; accent-color:var(--accent); }
+.rn-check small{ display:block; color:var(--text-faint); font-size:11px; }
+.rn-presets{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+.rn-btn{ font:inherit; font-size:12.5px; font-weight:700; padding:8px 14px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface-alt); color:var(--text); cursor:pointer; }
+.rn-btn:hover{ border-color:var(--accent); color:var(--accent); }
+.rn-btn.primary{ background:var(--accent); border-color:var(--accent); color:#fff; padding:10px 18px; }
+.rn-btn.primary:hover{ background:var(--accent-strong); color:#fff; }
+.rn-btn:disabled{ opacity:.55; cursor:not-allowed; }
+.rn-msg{ font-size:12.5px; font-weight:600; margin-top:10px; min-height:18px; }
+.rn-msg[data-kind="ok"]{ color:var(--good); } .rn-msg[data-kind="err"]{ color:var(--critical); }
+.rn-info{ font-size:12px; color:var(--text-muted); background:var(--accent-soft); border-radius:var(--radius-sm); padding:9px 11px; margin-bottom:12px; }
+.rn-hist{ display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 210px); overflow-y:auto; }
+.rn-item{ border:1px solid var(--border-soft); border-radius:var(--radius-sm); padding:10px 12px; background:var(--surface-alt); }
+.rn-item-h{ display:flex; align-items:center; gap:8px; }
+.rn-item-h b{ font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rn-pill{ font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; padding:3px 8px; border-radius:6px; }
+.rn-pill[data-s="pending"]{ background:var(--warning-soft); color:var(--warning-ink); }
+.rn-pill[data-s="running"]{ background:var(--accent-soft); color:var(--accent); }
+.rn-pill[data-s="done"]{ background:var(--good-soft); color:var(--good); }
+.rn-pill[data-s="failed"]{ background:var(--critical-soft); color:var(--critical); }
+.rn-pill[data-s="cancelled"]{ background:var(--surface); color:var(--text-faint); border:1px solid var(--border); }
+.rn-meta{ font-size:11.5px; color:var(--text-muted); margin-top:3px; }
+.rn-chips{ display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.rn-chip{ font-size:10.5px; padding:2px 7px; border-radius:6px; background:var(--surface); border:1px solid var(--border-soft); color:var(--text-muted); }
+.rn-result{ font-size:12px; margin-top:6px; color:var(--text); }
+.rn-actions{ display:flex; gap:6px; margin-top:8px; }
+.rn-empty{ font-size:12.5px; color:var(--text-muted); padding:8px 2px; }
+@media (max-width:820px){ .rn-grid{ grid-template-columns:1fr; } .rn-row{ grid-template-columns:1fr; } .rn-hist{ max-height:none; } }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .rn-btn.primary, :root:not([data-theme="light"]) .rn-btn.primary:hover{ color:#0d0d16; } }
+:root[data-theme="dark"] .rn-btn.primary, :root[data-theme="dark"] .rn-btn.primary:hover{ color:#0d0d16; }
+
+.rn-count{ margin-left:auto; align-self:center; font-size:12px; font-weight:700; color:var(--text-muted); }
+.rn-filter input{ font:inherit; font-size:12.5px; width:100%; padding:8px 11px; margin-bottom:8px; color:var(--text); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); outline:none; }
+.rn-filter input:focus{ border-color:var(--accent); }
+.rn-grp{ border:1px solid var(--border-soft); border-radius:var(--radius-sm); margin-bottom:6px; background:var(--surface-alt); overflow:hidden; }
+.rn-grp-h{ display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px; cursor:pointer; background:none; border:none; font:inherit; color:var(--text); text-align:left; }
+.rn-grp-h:hover{ background:var(--surface); }
+.rn-grp-h input{ accent-color:var(--accent); flex:none; }
+.rn-grp-name{ font-size:13px; font-weight:700; flex:1; min-width:0; }
+.rn-grp-n{ font-size:11.5px; font-weight:700; color:var(--text-muted); }
+.rn-caret{ width:14px; height:14px; flex:none; stroke:var(--text-muted); transition:transform .15s; }
+.rn-grp.open .rn-caret{ transform:rotate(90deg); }
+.rn-grp-b{ display:none; padding:2px 12px 8px 34px; border-top:1px solid var(--border-soft); background:var(--surface); }
+.rn-grp.open .rn-grp-b{ display:block; }
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">
 
@@ -423,6 +494,7 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     <div>
       <div class="sb-label">Workspace</div>
       <div class="module-tabs">
+        <button class="module-tab" id="runTab" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-14 9z"/></svg></span>Run settings</button>
         <button class="module-tab" id="notesTab" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>Notes</button>
       </div>
     </div>
@@ -502,6 +574,41 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
             <input type="file" id="noteImageFile" accept="image/*" hidden>
           </div>
           <div id="noteBody" contenteditable="true" spellcheck="true" data-placeholder="Start typing… (autosaves). Select text to format it; paste screenshots directly."></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content" id="runRoot" hidden>
+      <div class="pagehead">
+        <h1>Run settings</h1>
+        <p>Fill this in, press <b>Request run</b>, then tell Claude "run". Claude reads the pending request from here, runs the scripts on that app, and posts the results back on this dashboard.</p>
+      </div>
+      <div class="rn-grid">
+        <form class="rn-card" id="rnForm" autocomplete="off" novalidate>
+          <h2>New run</h2>
+          <p class="rn-sub">No keys or passwords go in this form — Claude reads the Auth Key from the app's own Credentials page, and your Dashboard login stays on your machine.</p>
+          <div class="rn-row">
+            <div class="rn-field"><label for="rnApp">App ID</label><input type="text" id="rnApp" placeholder="e.g. 168287007e590ab24" spellcheck="false" maxlength="40"></div>
+            <div class="rn-field"><label for="rnRegion">Region</label><select id="rnRegion"><option value="eu">EU</option><option value="us">US</option><option value="in">IN</option></select></div>
+          </div>
+          <div class="rn-field"><span class="rn-legend">Environment</span>
+            <div class="rn-seg"><label><input type="radio" name="rnEnv" value="production" checked><span>Production</span></label><label><input type="radio" name="rnEnv" value="staging"><span>Staging</span></label></div>
+          </div>
+          <div class="rn-field" id="rnUrlWrap" hidden><label for="rnUrl">Staging Dashboard address</label><input type="text" id="rnUrl" placeholder="https://…" spellcheck="false"><span class="rn-hint">You'll also need to log in to staging once on your machine.</span></div>
+          <div class="rn-field"><label for="rnConvType">Conversation to test in</label><select id="rnConvType"><option value="group">Group</option><option value="user">User</option></select><span class="rn-hint">Claude picks a real group or user from that app ("Hiking Group" if it exists). Extensions only.</span></div>
+          <div class="rn-field"><span class="rn-legend">What to run</span>
+            <div class="rn-presets"><button type="button" class="rn-btn" data-preset="all">Select all</button><button type="button" class="rn-btn" data-preset="none">Clear</button><span class="rn-count" id="rnCount"></span></div>
+            <div class="rn-filter" id="rnFilterWrap" hidden><input type="text" id="rnFilter" placeholder="Filter what to run…" spellcheck="false" autocomplete="off"></div>
+            <div id="rnScripts"></div>
+          </div>
+          <div class="rn-field"><label for="rnNotes">Notes for this run (optional)</label><textarea id="rnNotes" maxlength="500" placeholder="Anything Claude should know — no keys or passwords."></textarea></div>
+          <button type="submit" class="rn-btn primary" id="rnSubmit">Request run</button>
+          <div class="rn-msg" id="rnMsg" role="status" aria-live="polite"></div>
+        </form>
+        <div class="rn-card">
+          <h2>Run history</h2>
+          <p class="rn-sub">Newest first. Status is updated by Claude as the run progresses.</p>
+          <div class="rn-hist" id="rnHist"></div>
         </div>
       </div>
     </div>
@@ -1067,7 +1174,9 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
       state.apps = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.last_run_at || '').localeCompare(String(a.last_run_at || '')));   // newest run first
       renderAppSelect();
       if (!state.currentAppId && state.apps.length){
-        selectApp(moduleId, state.apps[0].id);
+        const pref = state.apps.find(a => a.id === state.preferApp);
+        state.preferApp = null;
+        selectApp(moduleId, (pref || state.apps[0]).id);
       } else if (!state.apps.length) {
         render();
       }
@@ -1173,6 +1282,7 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
     }
     wireControls();
     setupNotes();
+    setupRun();
     db.collection('modules').orderBy('order').onSnapshot(snap => {
       state.modules = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderModuleTabs();
@@ -1605,6 +1715,195 @@ body.notes-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
         loadEditor(false);
       }
     }, err => { console.error('notes', err); setNotesStatus('Notes are unavailable right now', 'error'); });
+  }
+
+
+  // ---------------------------------------------------------------------
+  // Run settings: a form that queues a run request in the db ("runs/<id>").
+  // The page can't run anything itself — Claude reads pending requests when
+  // asked to run, updates status/resultSummary, and posts results as usual.
+  // No secrets: only non-sensitive settings are accepted.
+  // ---------------------------------------------------------------------
+  // What can be run is DATA, not code: docs in db collection "runcatalog" (one per module):
+  //   { group: 'Extensions', order: 1, items: [{ key, label, hint?, script? }] }
+  // Adding a module's automation later = add a doc there; this form picks it up live.
+  // DEFAULT_CATALOG is only a fallback for an empty/unreadable catalog.
+  const DEFAULT_CATALOG = [
+    { id: 'extensions', group: 'Extensions', order: 1, items: [
+      { key: 'ext_ui', label: 'Sample App UI — the 9 core extensions (OFF / ON)' },
+      { key: 'ext_legacy', label: 'Legacy Moderation extensions', hint: 'Skipped automatically if the app has none' },
+      { key: 'ext_api', label: 'API / SDK sweep — all other extensions' } ] },
+    { id: 'ai-agents', group: 'AI Agents', order: 2, items: [
+      { key: 'ai_list', label: 'Agent list — add, edit, delete' },
+      { key: 'ai_builder', label: 'Instructions + Knowledge Base list' },
+      { key: 'ai_variables', label: 'Variables — create, use in instructions, substitution' },
+      { key: 'ai_kb', label: 'Knowledge Base retrieval', hint: 'Adds the standard sources first if the app has none' } ] },
+  ];
+  const runState = { open: false, runs: [], busy: false, catalog: DEFAULT_CATALOG, sel: new Set(), openGroups: new Set(), selInit: false, filter: '' };
+
+  function runSecretLike(txt){ return /[A-Za-z0-9_\-]{32,}/.test(txt || ''); }
+  function runItems(){ return runState.catalog.flatMap(g => (g.items || []).map(x => ({ ...x, g: g.group }))); }
+  function runLabel(key){ const it = runItems().find(x => x.key === key); return it ? it.label : key; }
+  function runChecked(){ const all = new Set(runItems().map(x => x.key)); return Array.from(runState.sel).filter(k => all.has(k)); }
+  function runSetChecked(keys){ runState.sel = new Set(keys); renderRunCatalog(); }
+
+  function renderRunCatalog(){
+    const box = el('rnScripts');
+    const total = runItems().length;
+    el('rnFilterWrap').hidden = total <= 8;
+    const f = runState.filter.trim().toLowerCase();
+    const caret = '<svg class="rn-caret" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+    let html = '';
+    runState.catalog.forEach((g, gi) => {
+      const items = (g.items || []).filter(x => !f || (g.group + ' ' + x.label).toLowerCase().includes(f));
+      if (!items.length) return;
+      const all = g.items || [];
+      const n = all.filter(x => runState.sel.has(x.key)).length;
+      const open = f ? true : runState.openGroups.has(g.id);
+      html += `<div class="rn-grp ${open ? 'open' : ''}" data-gi="${gi}">
+        <div class="rn-grp-h" role="button" tabindex="0"><input type="checkbox" class="rn-gcb" aria-label="Select all ${esc(g.group)}" ${n === all.length && all.length ? 'checked' : ''}><span class="rn-grp-name">${esc(g.group)}</span><span class="rn-grp-n">${n} of ${all.length}</span>${caret}</div>
+        <div class="rn-grp-b">${items.map(x => `<label class="rn-check"><input type="checkbox" value="${esc(x.key)}" ${runState.sel.has(x.key) ? 'checked' : ''}><span>${esc(x.label)}${x.hint ? `<small>${esc(x.hint)}</small>` : ''}</span></label>`).join('')}</div>
+      </div>`;
+    });
+    box.innerHTML = html || '<div class="rn-empty">Nothing matches that filter.</div>';
+    box.querySelectorAll('.rn-grp').forEach(grp => {
+      const g = runState.catalog[+grp.dataset.gi];
+      const gcb = grp.querySelector('.rn-gcb');
+      const n = (g.items || []).filter(x => runState.sel.has(x.key)).length;
+      gcb.indeterminate = n > 0 && n < (g.items || []).length;
+      const toggleOpen = () => { runState.openGroups.has(g.id) ? runState.openGroups.delete(g.id) : runState.openGroups.add(g.id); renderRunCatalog(); };
+      grp.querySelector('.rn-grp-h').addEventListener('click', e => { if (e.target === gcb) return; toggleOpen(); });
+      grp.querySelector('.rn-grp-h').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggleOpen(); } });
+      gcb.addEventListener('change', () => { (g.items || []).forEach(x => gcb.checked ? runState.sel.add(x.key) : runState.sel.delete(x.key)); renderRunCatalog(); });
+      grp.querySelectorAll('.rn-grp-b input').forEach(cb => cb.addEventListener('change', () => { cb.checked ? runState.sel.add(cb.value) : runState.sel.delete(cb.value); renderRunCatalog(); }));
+    });
+    el('rnCount').textContent = `${runChecked().length} of ${total} selected`;
+  }
+  function runEnv(){ const r = document.querySelector('input[name="rnEnv"]:checked'); return r ? r.value : 'production'; }
+  function runSyncEnv(){ el('rnUrlWrap').hidden = runEnv() !== 'staging'; }
+  function setRunMsg(t, kind){ const m = el('rnMsg'); m.textContent = t || ''; m.dataset.kind = kind || ''; }
+
+  function sortedRuns(){ return runState.runs.slice().sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0)); }
+
+  function prefillRunForm(){
+    const last = sortedRuns()[0];
+    if (!last) return;
+    if (!el('rnApp').value){                                   // never pre-fill the App ID: each run names its app
+      el('rnRegion').value = last.region || 'eu';
+      const r = document.querySelector(`input[name="rnEnv"][value="${last.env === 'staging' ? 'staging' : 'production'}"]`); if (r) r.checked = true;
+      el('rnUrl').value = last.env === 'staging' ? (last.baseUrl || '') : '';
+      el('rnConvType').value = last.conversationType === 'user' ? 'user' : 'group';
+      runSetChecked(last.scripts || []);
+      runSyncEnv();
+    }
+  }
+
+  function renderRunHistory(){
+    const box = el('rnHist');
+    const list = sortedRuns().slice(0, 15);
+    if (!list.length){ box.innerHTML = '<div class="rn-empty">No runs requested yet.</div>'; return; }
+    box.innerHTML = list.map(r => {
+      const st = r.status || 'pending';
+      const chips = (r.scripts || []).map(k => `<span class="rn-chip">${esc(runLabel(k).split(' — ')[0])}</span>`).join('');
+      const canOpen = st === 'done' || st === 'failed';
+      return `<div class="rn-item" data-id="${esc(r.id)}">
+        <div class="rn-item-h"><b>App ${esc(r.appId)} &middot; ${esc((r.region || '').toUpperCase())} &middot; ${esc(r.env || 'production')}</b><span class="rn-pill" data-s="${esc(st)}">${esc(st)}</span></div>
+        <div class="rn-meta">Requested ${esc(noteTime(r.requestedAt))} &middot; ${(r.scripts || []).length} script group(s)${r.conversationType ? ' &middot; test in: ' + esc(r.conversationType === 'user' ? 'a user' : 'a group') : (r.conversation ? ' &middot; conversation: ' + esc(r.conversation) : '')}</div>
+        <div class="rn-chips">${chips}</div>
+        ${r.notes ? `<div class="rn-meta">Notes: ${esc(r.notes)}</div>` : ''}
+        ${r.resultSummary ? `<div class="rn-result">${esc(r.resultSummary)}</div>` : ''}
+        <div class="rn-actions">
+          ${st === 'pending' ? '<button type="button" class="rn-btn" data-act="cancel">Cancel request</button>' : ''}
+          ${canOpen ? '<button type="button" class="rn-btn" data-act="open">Open results</button>' : ''}
+        </div></div>`;
+    }).join('');
+    box.querySelectorAll('.rn-item').forEach(item => {
+      const id = item.dataset.id;
+      const c = item.querySelector('[data-act=cancel]'); if (c) c.addEventListener('click', () => cancelRun(id));
+      const o = item.querySelector('[data-act=open]'); if (o) o.addEventListener('click', () => { const r = runState.runs.find(x => x.id === id); if (r) openRunResults(r.resultsAppId || r.appId); });
+    });
+  }
+
+  async function cancelRun(id){
+    try { await db.doc('runs/' + id).update({ status: 'cancelled' }); }
+    catch (e) { setRunMsg("Couldn't cancel that request.", 'err'); }
+  }
+
+  function openRunResults(appId){
+    closeRun();
+    state.preferApp = appId;
+    selectModule(state.currentModuleId || (state.modules[0] && state.modules[0].id));
+  }
+
+  async function submitRun(e){
+    e.preventDefault();
+    if (runState.busy) return;
+    const appId = el('rnApp').value.trim().toLowerCase();
+    const env = runEnv();
+    const notes = el('rnNotes').value.trim();
+    let baseUrl = 'https://app.cometchat.com';
+    if (!/^[0-9a-f]{15,20}$/.test(appId)) return setRunMsg('App ID looks wrong — it is 15–20 letters/numbers (0-9, a-f), e.g. 168287007e590ab24.', 'err');
+    if (env === 'staging'){
+      baseUrl = el('rnUrl').value.trim().replace(/\/+$/, '');
+      if (!/^https:\/\/[^\s/]+(\/\S*)?$/.test(baseUrl)) return setRunMsg('Enter the staging Dashboard address, starting with https://', 'err');
+    }
+    const scripts = runChecked();
+    if (!scripts.length) return setRunMsg('Pick at least one thing to run.', 'err');
+    if (runSecretLike(notes) || (env === 'staging' && runSecretLike(baseUrl.replace(/^https:\/\//, '')))){
+      return setRunMsg('That looks like a key or token. Do not put secrets here — Claude reads the Auth Key from the app itself.', 'err');
+    }
+    if (runState.runs.some(r => r.status === 'pending' && r.appId === appId && JSON.stringify((r.scripts || []).slice().sort()) === JSON.stringify(scripts.slice().sort()))){
+      return setRunMsg('An identical request for this app is already pending.', 'err');
+    }
+    runState.busy = true; el('rnSubmit').disabled = true; setRunMsg('Saving…', '');
+    try {
+      await db.collection('runs').add({
+        appId, region: el('rnRegion').value, env, baseUrl, conversationType: el('rnConvType').value, scripts, notes,
+        status: 'pending', requestedAt: Date.now(), resultSummary: '', resultsAppId: '',
+      });
+      el('rnApp').value = ''; el('rnNotes').value = '';
+      setRunMsg('Request saved. Now tell Claude "run" and it will pick this up.', 'ok');
+    } catch (err) {
+      setRunMsg(err && err.code === 'invalid_argument' ? "Can't save: view-only access." : "Couldn't save the request — try again.", 'err');
+    } finally { runState.busy = false; el('rnSubmit').disabled = false; }
+  }
+
+  function openRun(){
+    if (notesState.open) closeNotes();
+    runState.open = true;
+    document.body.classList.add('run-open');
+    el('contentRoot').hidden = true; el('runRoot').hidden = false;
+    prefillRunForm(); renderRunHistory();
+  }
+  function closeRun(){
+    if (!runState.open) return;
+    runState.open = false;
+    document.body.classList.remove('run-open');
+    el('runRoot').hidden = true; el('contentRoot').hidden = false;
+  }
+
+  function setupRun(){
+    renderRunCatalog();
+    el('rnFilter').addEventListener('input', e => { runState.filter = e.target.value; renderRunCatalog(); });
+    el('runTab').addEventListener('click', () => { runState.open ? closeRun() : openRun(); });
+    el('notesTab').addEventListener('click', () => { if (runState.open) closeRun(); }, true);           // opening Notes leaves Run
+    el('moduleTabs').addEventListener('click', () => { if (runState.open) closeRun(); }, true);
+    document.querySelectorAll('input[name="rnEnv"]').forEach(r => r.addEventListener('change', runSyncEnv));
+    el('rnForm').addEventListener('submit', submitRun);
+    el('rnForm').querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+      runSetChecked(b.dataset.preset === 'all' ? runItems().map(x => x.key) : []);
+    }));
+    db.collection('runcatalog').onSnapshot(snap => {
+      const cat = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(g => g.group && Array.isArray(g.items) && g.items.length)
+        .sort((a, b) => (a.order || 0) - (b.order || 0) || String(a.group).localeCompare(String(b.group)));
+      runState.catalog = cat.length ? cat : DEFAULT_CATALOG;
+      if (!runState.selInit){ runState.sel = new Set(runItems().map(x => x.key)); runState.selInit = true; }   // first load: everything ticked
+      renderRunCatalog();
+    }, err => { console.error('runcatalog', err); });
+    db.collection('runs').onSnapshot(snap => {
+      runState.runs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (runState.open) renderRunHistory();
+    }, err => { console.error('runs', err); });
   }
 
   boot();
