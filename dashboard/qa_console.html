@@ -432,6 +432,34 @@ body.rules-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-di
 #ruleDetail:focus{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
 @media (max-width:820px){ .rules-wrap{ grid-template-columns:1fr; } .rules-list-col{ max-height:260px; } }
 
+/* --- Extensions Rules: the same rule docs, as a tree grouped by section --- */
+#extTreeTab .ico svg{ width:14px; height:14px; stroke:var(--sb-text-dim); }
+body.exttree-open #extTreeTab{ background:var(--sb-active); color:var(--sb-active-text); font-weight:700; box-shadow:0 4px 14px rgba(0,0,0,.18); }
+body.exttree-open #extTreeTab .ico svg{ stroke:var(--sb-active-text); }
+body.exttree-open #moduleTabs .module-tab.active{ background:none; color:var(--sb-text); font-weight:600; box-shadow:none; }
+body.exttree-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim); }
+.ext-tree{ display:flex; flex-direction:column; gap:10px; max-width:820px; }
+.ext-tree-group{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-sm); overflow:hidden; }
+.ext-tree-gh{ display:flex; align-items:center; gap:10px; width:100%; padding:13px 16px; cursor:pointer; background:none; border:none; font:inherit; color:var(--text); text-align:left; }
+.ext-tree-gh:hover{ background:var(--surface-alt); }
+.ext-caret{ width:14px; height:14px; flex:none; stroke:var(--text-muted); transition:transform .15s; }
+.ext-tree-group.open .ext-caret{ transform:rotate(90deg); }
+.ext-gname{ font-size:14px; font-weight:700; flex:1; min-width:0; }
+.ext-ghint{ font-size:11.5px; color:var(--text-faint); font-weight:600; }
+.ext-gn{ font-size:11px; font-weight:800; color:var(--text-muted); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:20px; padding:2px 9px; }
+.ext-tree-items{ display:none; border-top:1px solid var(--border-soft); padding:4px 8px 8px 8px; }
+.ext-tree-group.open .ext-tree-items{ display:block; }
+.ext-leaf{ border-radius:9px; overflow:hidden; }
+.ext-leaf-h{ display:flex; align-items:center; gap:8px; width:100%; padding:8px 8px 8px 30px; cursor:pointer; background:none; border:none; font:inherit; font-size:12.5px; font-weight:600; color:var(--text); text-align:left; border-radius:8px; position:relative; }
+.ext-leaf-h:hover{ background:var(--surface-alt); }
+.ext-leaf-h::before{ content:""; position:absolute; left:10px; top:50%; width:6px; height:6px; border-radius:50%; background:var(--text-faint); transform:translateY(-50%); }
+.ext-leaf.open .ext-leaf-h{ color:var(--accent); }
+.ext-leaf.open .ext-leaf-h::before{ background:var(--accent); }
+.ext-leaf-body{ margin:2px 8px 8px 30px; padding:10px 12px; background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:9px; font-size:12.5px; line-height:1.6; color:var(--text-muted); }
+.ext-leaf-edit{ display:inline-block; margin-top:8px; font-size:11.5px; font-weight:700; color:var(--accent); cursor:pointer; background:none; border:none; padding:0; font-family:inherit; }
+.ext-leaf-edit:hover{ text-decoration:underline; }
+@media (max-width:640px){ .ext-leaf-h{ padding-left:26px; } .ext-leaf-h::before{ left:8px; } .ext-leaf-body{ margin-left:26px; } }
+
 /* --- Request a run (form that queues a run request for Claude) --- */
 #runTab .ico svg{ width:14px; height:14px; stroke:var(--sb-text-dim); }
 #runsTab .ico svg{ width:14px; height:14px; stroke:var(--sb-text-dim); }
@@ -579,6 +607,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
         <button class="module-tab" id="runsTab" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>Live runs</button>
         <button class="module-tab" id="notesTab" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>Notes</button>
         <button class="module-tab" id="rulesTab" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Rules</button>
+        <button class="module-tab" id="extTreeTab" type="button"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v14a2 2 0 0 0 2 2h6"/><path d="M3 8h4"/><path d="M3 13h4"/><path d="M11 4h10M11 10h7M11 16h7"/></svg></span>Extensions Rules</button>
       </div>
     </div>
 
@@ -686,6 +715,14 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
           <textarea id="ruleDetail" placeholder="What the rule is, why it exists, and how to apply it…"></textarea>
         </div>
       </div>
+    </div>
+
+    <div class="content" id="extTreeRoot" hidden>
+      <div class="pagehead">
+        <h1>Extensions Rules</h1>
+        <p>The same rules as the Rules page, grouped into a tree the way the Extensions module itself is organized — Sample App UI, Legacy Moderation, API/SDK, and the ones with no client-testable path. Click a section to open it, click an extension to read how it's actually checked.</p>
+      </div>
+      <div class="ext-tree" id="extTree"></div>
     </div>
 
     <div class="content" id="runRoot" hidden>
@@ -1446,6 +1483,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
     wireControls();
     setupNotes();
     setupRules();
+    setupExtTree();
     setupRun();
     db.collection('modules').orderBy('order').onSnapshot(snap => {
       state.modules = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1820,6 +1858,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
   }
 
   function openNotes(){
+    if (extTreeState.open) closeExtTree();
     notesState.open = true;
     document.body.classList.add('notes-open');
     el('contentRoot').hidden = true;
@@ -2005,6 +2044,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
   function openRules(){
     if (notesState.open) closeNotes();
     if (runState.open) closeRun();
+    if (extTreeState.open) closeExtTree();
     rulesState.open = true;
     document.body.classList.add('rules-open');
     el('contentRoot').hidden = true;
@@ -2040,7 +2080,84 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
       rulesState.rules = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (!activeRule()) rulesState.activeId = (rulesState.open && sortedRules()[0]) ? sortedRules()[0].id : null;
       if (rulesState.open){ renderRulesList(); loadRuleEditor(false); }
+      if (extTreeState.open){ renderExtTree(); }
     }, err => { console.error('rules', err); setRulesStatus('Rules are unavailable right now', 'error'); });
+  }
+
+  // --- Extensions Rules: a tree view over the same `rules` collection (reuses rulesState.rules,
+  // already subscribed by setupRules) for whichever docs carry a `group` — one section per group,
+  // one leaf per extension, click to expand its "how it works" text inline.
+  const EXT_GROUPS = [
+    { key: 'ui', label: 'Section A — Sample App UI', hint: '9 core extensions' },
+    { key: 'legacy', label: 'Legacy Moderation', hint: '5 rows' },
+    { key: 'api', label: 'Section B — API/SDK', hint: '19 extensions' },
+    { key: 'nopath', label: 'Section C — No client-testable path', hint: '11 extensions' },
+  ];
+  const extTreeState = { open: false, openGroups: new Set(['ui']), openLeaf: null };
+  function extItems(){ return rulesState.rules.filter(r => r.group).slice().sort((a, b) => (a.order || 0) - (b.order || 0)); }
+  function extLeafTitle(r){ return (r.title || '').replace(/^(How it works: |Why untestable: )/, ''); }
+  function renderExtTree(){
+    const items = extItems();
+    el('extTree').innerHTML = EXT_GROUPS.map(g => {
+      const rows = items.filter(r => r.group === g.key);
+      const open = extTreeState.openGroups.has(g.key);
+      const leaves = rows.map(r => {
+        const lopen = extTreeState.openLeaf === r.id;
+        return `<div class="ext-leaf ${lopen ? 'open' : ''}" data-id="${esc(r.id)}">
+          <button class="ext-leaf-h" type="button">${esc(extLeafTitle(r))}</button>
+          ${lopen ? `<div class="ext-leaf-body">${esc(r.detail || '')}<br><button class="ext-leaf-edit" type="button" data-edit="${esc(r.id)}">Edit this rule →</button></div>` : ''}
+        </div>`;
+      }).join('');
+      return `<div class="ext-tree-group ${open ? 'open' : ''}" data-g="${g.key}">
+        <button class="ext-tree-gh" type="button">
+          <svg class="ext-caret" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          <span class="ext-gname">${esc(g.label)}</span><span class="ext-ghint">${esc(g.hint)}</span><span class="ext-gn">${rows.length}</span>
+        </button>
+        <div class="ext-tree-items">${rows.length ? leaves : '<div class="rules-empty">Nothing in this section yet.</div>'}</div>
+      </div>`;
+    }).join('');
+    el('extTree').querySelectorAll('.ext-tree-gh').forEach(b => b.addEventListener('click', () => {
+      const g = b.closest('.ext-tree-group').dataset.g;
+      extTreeState.openGroups.has(g) ? extTreeState.openGroups.delete(g) : extTreeState.openGroups.add(g);
+      renderExtTree();
+    }));
+    el('extTree').querySelectorAll('.ext-leaf-h').forEach(b => b.addEventListener('click', () => {
+      const id = b.closest('.ext-leaf').dataset.id;
+      extTreeState.openLeaf = extTreeState.openLeaf === id ? null : id;
+      renderExtTree();
+    }));
+    el('extTree').querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = b.dataset.edit;
+      closeExtTree();
+      rulesState.cat = 'Extensions'; rulesState.filter = '';
+      openRules();
+      selectRule(id);
+    }));
+  }
+  function openExtTree(){
+    if (notesState.open) closeNotes();
+    if (runState.open) closeRun();
+    if (rulesState.open) closeRules();
+    extTreeState.open = true;
+    document.body.classList.add('exttree-open');
+    el('contentRoot').hidden = true;
+    el('extTreeRoot').hidden = false;
+    renderExtTree();
+  }
+  function closeExtTree(){
+    if (!extTreeState.open) return;
+    extTreeState.open = false;
+    document.body.classList.remove('exttree-open');
+    el('extTreeRoot').hidden = true;
+    el('contentRoot').hidden = false;
+  }
+  function setupExtTree(){
+    el('extTreeTab').addEventListener('click', () => { extTreeState.open ? closeExtTree() : openExtTree(); });
+    el('moduleTabs').addEventListener('click', () => { if (extTreeState.open) closeExtTree(); }, true);
+    el('notesTab').addEventListener('click', () => { if (extTreeState.open) closeExtTree(); }, true);
+    if (el('runTab')) el('runTab').addEventListener('click', () => { if (extTreeState.open) closeExtTree(); }, true);
+    el('rulesTab').addEventListener('click', () => { if (extTreeState.open) closeExtTree(); }, true);
   }
 
 
@@ -2239,6 +2356,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
     mode = mode === 'runs' ? 'runs' : 'form';
     if (notesState.open) closeNotes();
     if (rulesState.open) closeRules();
+    if (extTreeState.open) closeExtTree();
     runState.open = true; runState.mode = mode;
     document.body.classList.add('run-open');
     document.body.classList.toggle('run-mode-form', mode === 'form');
