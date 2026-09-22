@@ -21,10 +21,46 @@ class BasePage:
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
-    def goto(self, path: str = "", wait_until: str = "domcontentloaded") -> None:
+    def goto(
+        self,
+        path: str = "",
+        wait_until: str = "domcontentloaded",
+        force: bool = False,
+        ready_selector: Optional[str] = None,
+    ) -> bool:
+        """Open `path`. Returns True if a real navigation happened.
+
+        The page is reloaded only when it is not already sitting on the target
+        URL in a usable state, so a run of same-page tests does not reload the
+        SPA once per test. Pass force=True when the test needs a genuinely fresh
+        load (page-load assertions, or a list whose data has since changed).
+        """
         url = f"{self.base_url}/app/{self.app_id}/{path.lstrip('/')}".rstrip("/")
+
+        if not force and self._already_settled_at(url, ready_selector):
+            return False
+
         self.page.goto(url, wait_until=wait_until, timeout=60_000)
         self.wait_for_network_idle()
+        return True
+
+    def _already_settled_at(self, url: str, ready_selector: Optional[str]) -> bool:
+        """True when the page is on `url` and still in a usable state."""
+        try:
+            current = self.page.url.split("?")[0].split("#")[0].rstrip("/")
+            if current != url.rstrip("/"):
+                return False
+
+            # Clear anything a previous test left open (modal, dropdown, popover)
+            # so the next test does not inherit its state.
+            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(150)
+
+            if ready_selector:
+                self.page.wait_for_selector(ready_selector, timeout=3_000, state="visible")
+            return True
+        except Exception:
+            return False  # anything unexpected -> take the reload
 
     def wait_for_network_idle(self, timeout: int = 20_000) -> None:
         try:

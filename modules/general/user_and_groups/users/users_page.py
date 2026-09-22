@@ -25,6 +25,18 @@ from playwright.sync_api import Locator, Page
 
 from core.base_page import BasePage
 
+# The user list is the one thing here that goes stale: anything that creates,
+# edits, deactivates or deletes a user makes the rendered table wrong. Rather
+# than reloading the page for every test, mutations flag the list and the next
+# open() pays for the reload. Shared at module level because page objects are
+# rebuilt per test while the browser tab is not.
+_LIST_STALE = {"value": True}
+
+
+def mark_user_list_stale() -> None:
+    _LIST_STALE["value"] = True
+
+
 # --- Expectations drawn from the test-case sheet ------------------------------
 
 TABLE_COLUMNS = ["Name", "UID", "Role", "Created", "Actions"]
@@ -33,7 +45,10 @@ FILTER_CHIPS = ["UIDs", "Role", "Status", "Created At Date"]
 
 ADD_USER_FIELDS = {
     "name": "Enter user name",
-    "uid": "Enter UID",
+    # VERIFIED: the field says "Enter user ID", not "Enter UID". The old value
+    # fell through to the loose `placeholder*='Enter'` match, which hit the name
+    # field first and put the UID into Name.
+    "uid": "Enter user ID",
     "tags": "Add a tag",
     "avatar": "https://example.com/avatar.png",
     "link": "https://example.com/profile",
@@ -52,9 +67,11 @@ SELECTORS = {
     "page_size": ".ant-pagination-options",
     "tab": ".ant-tabs-tab",
     "tab_active": ".ant-tabs-tab-active",
-    "modal": ".ant-modal",
-    "modal_close": ".ant-modal-close",
-    "modal_title": ".ant-modal-title",
+    # VERIFIED: Add User opens an ant Drawer, not a Modal. Both are matched so
+    # any genuinely modal dialog (delete confirmation) still resolves.
+    "modal": ".ant-drawer-content, .ant-modal",
+    "modal_close": ".ant-drawer-close, .ant-modal-close",
+    "modal_title": "[class*='form-title'], .ant-drawer-title, .ant-modal-title",
     "form_error": ".ant-form-item-explain-error",
     "select": ".ant-select",
     "select_option": ".ant-select-item-option",
@@ -64,12 +81,12 @@ SELECTORS = {
     "skeleton": ".ant-skeleton",
     "message": ".ant-message-notice",
     "popconfirm": ".ant-popconfirm",
-    # --- App-specific, INFERRED — correct these after the scan ---------------
-    "search_input": "input[placeholder*='Search' i]",          # INFERRED
-    "filter_button": "button:has-text('Filter')",              # INFERRED
-    "add_user_button": "button:has-text('Add User')",          # INFERRED
-    "row_actions": "td:last-child",                            # INFERRED
-    "toolbar": "[class*=toolbar i], [class*=tableHeader i]",   # INFERRED
+    # --- App-specific, VERIFIED against the live DOM on 17 Aug 2026 ----------
+    "search_input": "input[placeholder*='Search' i]",   # "Search by name or user ID"
+    "filter_button": "button:has-text('Filter')",       # button reads "Filters"
+    "add_user_button": "button:has-text('Add User')",   # real <button class="ant-btn">
+    "row_actions": "td:last-child",                     # holds the action <button>s
+    "toolbar": "[class*=toolbar i], [class*=tableHeader i]",  # style_...__toolbar-actions__
 }
 
 
@@ -79,16 +96,20 @@ class UsersPage(BasePage):
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
-    def open(self) -> "UsersPage":
-        self.goto(self.PATH)
+    def open(self, force: bool = False) -> "UsersPage":
+        ready = f"{SELECTORS['table']}, {SELECTORS['empty']}"
+        # Reload when the list is known to be out of date, never just on principle.
+        navigated = self.goto(
+            self.PATH, force=force or _LIST_STALE["value"], ready_selector=ready
+        )
         # Either the table or an empty state must settle before we assert.
         try:
-            self.page.wait_for_selector(
-                f"{SELECTORS['table']}, {SELECTORS['empty']}", timeout=30_000
-            )
+            self.page.wait_for_selector(ready, timeout=30_000)
         except Exception:
             pass
-        self.page.wait_for_timeout(1_200)
+        if navigated:
+            self.page.wait_for_timeout(1_200)
+            _LIST_STALE["value"] = False
         return self
 
     def open_via_sidebar(self) -> "UsersPage":
@@ -395,6 +416,7 @@ class UsersPage(BasePage):
         btn = self.modal().get_by_role("button", name=re.compile(r"save|create|add|submit", re.I))
         (btn.first if btn.count() else self.modal().locator("button").last).click()
         self.page.wait_for_timeout(2_500)
+        mark_user_list_stale()  # a user was created or edited
 
     def cancel_modal(self) -> None:
         btn = self.modal().get_by_role("button", name=re.compile(r"cancel", re.I))
@@ -443,6 +465,7 @@ class UsersPage(BasePage):
         )
         (btn.first if btn.count() else dlg.locator("button").last).click()
         self.page.wait_for_timeout(2_500)
+        mark_user_list_stale()  # delete / deactivate / remove was confirmed
 
     def dismiss_confirm(self) -> None:
         dlg = self.confirm_dialog()

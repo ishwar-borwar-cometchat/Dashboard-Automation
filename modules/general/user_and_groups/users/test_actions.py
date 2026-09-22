@@ -36,7 +36,8 @@ def _locate(users, uid: str) -> int:
 @pytest.mark.tc(id="USR_043", scenario=SCENARIO, sentiment="Positive", priority="High",
                 title="Verify deactivating a user",
                 expected="User moves to Deactivated Users, no longer in Active")
-def test_usr_043_deactivate(users, seeded_user):
+def test_usr_043_deactivate(users, fresh_user):
+    seeded_user = fresh_user  # deactivates the user, so it must not be shared
     idx = _locate(users, seeded_user)
 
     control = users.row_action(idx, DEACTIVATE)
@@ -63,7 +64,8 @@ def test_usr_043_deactivate(users, seeded_user):
 @pytest.mark.tc(id="USR_044", scenario=SCENARIO, sentiment="Positive", priority="High",
                 title="Verify reactivating a deactivated user",
                 expected="User returns to the Active Users list")
-def test_usr_044_reactivate(users, seeded_user):
+def test_usr_044_reactivate(users, fresh_user):
+    seeded_user = fresh_user  # leaves the user deactivated if it fails midway
     idx = _locate(users, seeded_user)
     control = users.row_action(idx, DEACTIVATE)
     assert control is not None, "No deactivate control on the user row"
@@ -189,7 +191,8 @@ def test_usr_079_delete_confirm_copy(users, seeded_user):
 @pytest.mark.tc(id="USR_080", scenario=CONFIRM_SCENARIO, sentiment="Positive", priority="High",
                 title="Verify actions available on the Deactivated Users tab",
                 expected="Reactivate and delete actions, not a deactivate action")
-def test_usr_080_deactivated_tab_actions(users, seeded_user):
+def test_usr_080_deactivated_tab_actions(users, fresh_user):
+    seeded_user = fresh_user  # deactivates the user, so it must not be shared
     idx = _locate(users, seeded_user)
     control = users.row_action(idx, DEACTIVATE)
     assert control is not None, "No deactivate control on the user row"

@@ -103,10 +103,11 @@ class OverviewPage(BasePage):
     # ------------------------------------------------------------------
     # Navigation / setup
     # ------------------------------------------------------------------
-    def open(self) -> "OverviewPage":
-        self.goto(self.PATH)
+    def open(self, force: bool = False) -> "OverviewPage":
+        navigated = self.goto(self.PATH, force=force, ready_selector=SEL_CARD)
         self.page.wait_for_selector(SEL_CARD, timeout=30_000)
-        self.page.wait_for_timeout(1_500)
+        if navigated:
+            self.page.wait_for_timeout(1_500)  # only a fresh load needs to settle
         return self
 
     def install_capture(self) -> None:

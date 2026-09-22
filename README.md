@@ -9,7 +9,7 @@ dashboard's own sidebar, so a module in the product maps to exactly one folder h
 | General > User & Groups > Users | 92 | `USR_001`–`USR_092` | Automated |
 | General > User & Groups > Groups | — | — | Not started |
 | General > User & Groups > User Roles | — | — | Not started |
-| Products > Chat & Messaging | — | — | Not started |
+| Products > Chat & Messaging | 27 | `CHF_001`–`CHF_027` | Automated (Features page only) |
 | Products > Voice & Video Calls | — | — | Not started |
 | Products > AI Agents | — | — | Not started |
 | Products > BYO Agents | — | — | Not started |
@@ -18,7 +18,7 @@ dashboard's own sidebar, so a module in the product maps to exactly one folder h
 | Platform Features > Notifications | — | — | Not started |
 | Platform Features > Analytics & Insights | — | — | Not started |
 | Account > Application / Profile / Resources | — | — | Not started |
-| **Total automated** | **147** | | |
+| **Total automated** | **174** | | |
 
 ## Layout
 
@@ -38,8 +38,8 @@ Dashboard-Automation/
 │   │       ├── groups/          (placeholder)
 │   │       └── user_roles/      (placeholder)
 │   ├── products/
-│   │   ├── chat_and_messaging/  voice_and_video_calls/  ai_agents/
-│   │   └── byo_agents/          campaigns/
+│   │   ├── chat_and_messaging/  chat_features_page.py + 4 test files
+│   │   └── voice_and_video_calls/  ai_agents/  byo_agents/  campaigns/
 │   ├── platform_features/
 │   │   └── moderation/  notifications/  analytics_and_insights/
 │   └── account/
@@ -153,6 +153,25 @@ block. Nothing outside it should need changing.
 
 **USR_081 is the one to watch.** It applies the same check that caught OV_052, and
 the Auth Tokens table on the user detail page is likely the same component pattern.
+
+### Chat & Messaging > Features — live run, 2 Sep 2026: 27 pass
+
+**"Conversation and Advanced Search" (CHF_027) is inconsistently interactive.**
+It's grouped under CORE with 12 other always-on features, but unlike them its
+switch renders with no `disabled` attribute — a live, clickable toggle sitting
+among features that cannot be turned off. Not toggled live by this suite; flagged
+for a product look.
+
+**Smart Chat Features are gated behind AI Settings (CHF_024-026).** On an app
+with AI Settings not configured, enabling Conversation Starter, Smart Replies or
+Conversation Summary shows a blocking modal ("AI Feature Requires AI Settings to
+Be Enabled") instead of toggling. Correct behavior, not a bug — handled as its
+own gate-behavior case per extension rather than the enable/disable round trip
+every other extension gets.
+
+**Every toggle takes 1.5-3s to reflect in the DOM.** `aria-checked` does not
+flip on click; it changes only once the API call round-trips. `wait_for_state()`
+in `chat_features_page.py` polls for this rather than asserting immediately.
 
 ## Adding a module
 

@@ -57,12 +57,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--log", required=True)
     ap.add_argument("--start-ms", type=int, required=True)
-    ap.add_argument("--steps", required=True, help="comma-separated step names, in run order")
+    ap.add_argument("--steps", help="comma-separated step names, in run order (names must not contain commas)")
+    ap.add_argument("--steps-file", help="file with one step name per line (use this when a name contains a comma)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--est-from", nargs="*", default=[])
     ap.add_argument("--poll", type=float, default=2.0)
     a = ap.parse_args()
-    names = [s.strip() for s in a.steps.split(",") if s.strip()]
+    if a.steps_file:
+        names = [l.strip() for l in open(a.steps_file).read().splitlines() if l.strip()]
+    else:
+        names = [s.strip() for s in (a.steps or "").split(",") if s.strip()]
     est = estimates(a.est_from)
     fallback = round(sum(est.values()) / len(est)) if est else 0
     fin, last_end, last_key = {}, a.start_ms / 1000, None

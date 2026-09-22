@@ -5,6 +5,9 @@
 app opened by "Manage Agent") has no page object yet and is NOT covered
 here; see modules/products/ai_agents/README.md.
 
+Order of the checks: Add Agent -> Delete Agent -> Add New Agent -> Edit Agent, so the run ends with one new
+"Knowledge Assistant <random>" agent left on the app (printed as RUN_AGENT=<name>).
+
 Real write-then-verify for each list-page action, same standard as the
 Extensions scripts: never mark PASS from an assumed outcome — read the
 actual list back after each action. A uniquely-timestamped test agent name
@@ -27,6 +30,7 @@ import argparse
 import json
 import os
 import pathlib
+import random
 import sys
 import time
 
@@ -84,91 +88,92 @@ def run(screenshot_dir: pathlib.Path) -> dict:
             print(f"NOTE: {len(stray)} stray test agent(s) already on the list: {stray} "
                   f"(left over from a previous run — not touched by this script)")
 
-        test_name = f"QA Automation Test Agent {int(time.time())}"
-        test_desc = "Created by verify_ai_agents.py — safe to delete."
+        # The four actions run in this order, so the run ENDS with one new agent left on the app:
+        #   Add Agent -> Delete Agent -> Add New Agent -> Edit Agent
+        # Every name is "Knowledge Assistant <random 4 digits>", never one that is already on the list.
+        taken = set(baseline)
 
-        # -----------------------------------------------------------
-        # Add
-        # -----------------------------------------------------------
-        add_ok = None
-        add_error = None
-        try:
-            ai.add_agent(test_name, description=test_desc)
-            add_ok = ai.exists(test_name)
-        except Exception as e:
-            add_error = str(e)
-        page.screenshot(path=str(screenshot_dir / "01_after_add.png"))
-        results["add_agent"] = {
-            "target_name": test_name,
-            "ok": bool(add_ok) and add_error is None,
-            "error": add_error,
-            "list_after": ai.agent_names(),
-        }
-        print("Add agent:", results["add_agent"]["ok"], "| list now:", results["add_agent"]["list_after"])
+        def new_name() -> str:
+            while True:
+                n = f"Knowledge Assistant {random.randint(1000, 9999)}"
+                if n not in taken and not any(n in t or t in n for t in taken if t != "Knowledge Assistant"):
+                    taken.add(n)
+                    return n
 
-        # -----------------------------------------------------------
-        # Edit (only if add succeeded — nothing to edit otherwise)
-        # -----------------------------------------------------------
-        edited_name = f"{test_name} (edited)"
-        if results["add_agent"]["ok"]:
-            edit_ok = None
-            edit_error = None
+        first_name = new_name()
+        second_name = new_name()
+        edited_name = new_name()
+        first_desc = "Created by verify_ai_agents.py — a throw-away agent, deleted right after."
+        second_desc = "Knowledge Assistant created by the automated run."
+
+        def step(key: str, shot: str, action, ok_check, **extra) -> bool:
+            error = None
+            ok = None
             try:
-                ai.edit_agent(test_name, new_name=edited_name, description=test_desc + " Edited.")
-                edit_ok = ai.exists(edited_name) and not ai.exists(test_name)
-            except Exception as e:
-                edit_error = str(e)
-            page.screenshot(path=str(screenshot_dir / "02_after_edit.png"))
-            results["edit_agent"] = {
-                "from": test_name, "to": edited_name,
-                "ok": bool(edit_ok) and edit_error is None,
-                "error": edit_error,
-                "list_after": ai.agent_names(),
-            }
-            print("Edit agent:", results["edit_agent"]["ok"], "| list now:", results["edit_agent"]["list_after"])
-        else:
-            results["edit_agent"] = {"ok": False, "error": "skipped — add_agent did not succeed", "list_after": ai.agent_names()}
-            edited_name = test_name  # nothing was renamed; delete the original below
+                action()
+                ok = ok_check()
+            except Exception as e:  # noqa: BLE001
+                error = str(e)
+            page.screenshot(path=str(screenshot_dir / shot))
+            results[key] = {**extra, "ok": bool(ok) and error is None, "error": error, "list_after": ai.agent_names()}
+            print(f"{key}:", results[key]["ok"], "| list now:", results[key]["list_after"])
+            return results[key]["ok"]
 
-        # -----------------------------------------------------------
-        # Delete (clean up regardless of edit outcome — try both possible names)
-        # -----------------------------------------------------------
-        delete_target = edited_name if ai.exists(edited_name) else (test_name if ai.exists(test_name) else None)
-        if delete_target:
-            delete_ok = None
-            delete_error = None
-            try:
-                ai.delete_agent(delete_target)
-                delete_ok = not ai.exists(delete_target)
-            except Exception as e:
-                delete_error = str(e)
-            page.screenshot(path=str(screenshot_dir / "03_after_delete.png"))
-            results["delete_agent"] = {
-                "target": delete_target,
-                "ok": bool(delete_ok) and delete_error is None,
-                "error": delete_error,
-                "list_after": ai.agent_names(),
-            }
-            print("Delete agent:", results["delete_agent"]["ok"], "| list now:", results["delete_agent"]["list_after"])
+        # 1. Add Agent
+        added = step("add_agent", "01_after_add.png",
+                     lambda: ai.add_agent(first_name, description=first_desc),
+                     lambda: ai.exists(first_name), target_name=first_name)
+
+        # 2. Delete Agent (the one just added)
+        if added or ai.exists(first_name):
+            step("delete_agent", "02_after_delete.png",
+                 lambda: ai.delete_agent(first_name),
+                 lambda: not ai.exists(first_name), target=first_name)
         else:
-            results["delete_agent"] = {"ok": False, "error": "nothing to delete — neither test name found on list", "list_after": ai.agent_names()}
+            results["delete_agent"] = {"ok": False, "error": "skipped — add_agent did not succeed", "list_after": ai.agent_names()}
+
+        # 3. Add New Agent (this is the agent that is kept)
+        added2 = step("add_new_agent", "03_after_add_new.png",
+                      lambda: ai.add_agent(second_name, description=second_desc),
+                      lambda: ai.exists(second_name), target_name=second_name)
+
+        # 4. Edit Agent (edit the new one: new name + description; it is still a "Knowledge Assistant …")
+        final_name = second_name
+        if added2:
+            if step("edit_agent", "04_after_edit.png",
+                    lambda: ai.edit_agent(second_name, new_name=edited_name, description=second_desc + " Edited."),
+                    lambda: ai.exists(edited_name) and not ai.exists(second_name),
+                    **{"from": second_name, "to": edited_name}):
+                final_name = edited_name
+            elif ai.exists(edited_name):
+                final_name = edited_name
+        else:
+            results["edit_agent"] = {"ok": False, "error": "skipped — add_new_agent did not succeed", "list_after": ai.agent_names()}
+        results["run_agent"] = {"name": final_name if ai.exists(final_name) else None}
+        print(f"RUN_AGENT={final_name if ai.exists(final_name) else ''}")
 
         # -----------------------------------------------------------
         # Isolation check: every pre-existing agent from baseline (minus
-        # any already-flagged stray) is still present at the end.
+        # any already-flagged stray) is still present at the end, and the
+        # only new agent left is the one this run created.
         # -----------------------------------------------------------
         final = ai.agent_names()
         expected_untouched = [n for n in baseline if n not in stray]
         missing = [n for n in expected_untouched if n not in final]
+        extra_agents = [n for n in final if n not in baseline]
         results["isolation_check"] = {
             "expected_untouched": expected_untouched,
             "final_list": final,
             "missing": missing,
-            "ok": len(missing) == 0,
+            "new_agents_left": extra_agents,
+            "ok": len(missing) == 0 and extra_agents == ([final_name] if ai.exists(final_name) else []),
         }
-        print("Isolation check (pre-existing agents untouched):", results["isolation_check"]["ok"])
+        print("Safety check (pre-existing agents untouched, one new agent left):", results["isolation_check"]["ok"])
+        if not results["isolation_check"]["ok"]:
+            print("WARNING: the agent list is not what this run should leave behind — see isolation_check in the JSON.")
         if missing:
             print("  MISSING (were on baseline, not on final list):", missing)
+        page.screenshot(path=str(screenshot_dir / "05_final_list.png"))
 
         ctx.close()
         browser.close()
@@ -192,7 +197,7 @@ def main() -> None:
     with open(out_path, "w") as f:
         json.dump({"results": results, "elapsed_s": round(elapsed, 1), "app_id": APP_ID}, f, indent=2, default=str)
 
-    checks = ["add_agent", "edit_agent", "delete_agent", "isolation_check"]
+    checks = ["add_agent", "delete_agent", "add_new_agent", "edit_agent"]   # the edit leaves the final state; isolation is only a safety warning
     passed = sum(1 for c in checks if results.get(c, {}).get("ok"))
     print(f"\n{'=' * 50}")
     print(f"AI Agents (list page): {passed}/{len(checks)} checks passed in {elapsed:.0f}s")

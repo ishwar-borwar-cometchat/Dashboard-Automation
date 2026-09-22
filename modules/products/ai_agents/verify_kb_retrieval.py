@@ -63,6 +63,7 @@ import json
 import os
 import pathlib
 import sys
+import re
 import time
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -83,6 +84,7 @@ STORAGE_STATE = os.environ.get("CC_STORAGE_STATE", str(ROOT / "auth" / "storage_
 HEADLESS = os.environ.get("CC_HEADLESS", "1") != "0"
 KEEP_AGENT = os.environ.get("CC_KEEP_AGENT") == "1"  # opt-in: skip delete_agent(), leave a real permanent agent
 AGENT_NAME_OVERRIDE = os.environ.get("CC_AGENT_NAME")  # real name for a kept agent, instead of the auto QA-test name
+RUN_AGENT = os.environ.get("CC_RUN_AGENT")  # one fresh agent shared by every check of a run (see run_all.py); never deleted here
 EXISTING_AGENT_NAME = os.environ.get("CC_EXISTING_AGENT")  # test against a real, already-existing agent instead of creating one
 
 SYSTEM_PROMPT = (
@@ -189,6 +191,10 @@ def ensure_only_attached(
 INTERIM_STATE_TEXTS = {"thinking…", "retrieving relevant information from available sources…"}
 
 
+# A bubble that holds only a clock time ("01:26 PM") is a message timestamp, never an answer.
+TIME_ONLY = re.compile(r"^\s*\d{1,2}:\d{2}\s*([AP]M)?\s*$", re.I)
+
+
 def wait_for_stable_reply(page, max_seconds: float = 45.0, interval: float = 0.5, stable_reads: int = 4) -> list[str]:
     """Poll message bubbles until the last one stops changing for
     `stable_reads` consecutive polls (2s of no change by default) AND isn't
@@ -206,7 +212,7 @@ def wait_for_stable_reply(page, max_seconds: float = 45.0, interval: float = 0.5
     while time.time() < deadline:
         try:
             texts = [bubbles.nth(i).inner_text().strip() for i in range(bubbles.count())]
-            texts = [t for t in texts if t]
+            texts = [t for t in texts if t and not TIME_ONLY.match(t)]   # ignore timestamps
         except Exception:
             texts = []
         last = texts[-1] if texts else ""
@@ -251,7 +257,9 @@ def ask_and_capture(
         "reply_text": reply_text,
         "retrieval_indicator_shown": retrieval_hint_seen,
         "no_match_flag": no_match_flag,
-        "ok": bool(reply_text) and not no_match_flag and not still_interim,
+        # a real answer is text, not empty, a loading state, or a timestamp
+        "ok": bool(reply_text.strip()) and len(reply_text.strip()) >= 15 and not TIME_ONLY.match(reply_text)
+              and not no_match_flag and not still_interim,
     }
 
 
@@ -276,8 +284,15 @@ def run(screenshot_dir: pathlib.Path) -> dict:
             test_name = EXISTING_AGENT_NAME
             if not agents.exists(test_name):
                 raise RuntimeError(f"CC_EXISTING_AGENT='{test_name}' not found on the AI Agents list")
+        elif RUN_AGENT:
+            test_name = RUN_AGENT
+            if not agents.exists(test_name):
+                raise RuntimeError(f"CC_RUN_AGENT='{test_name}' not found on the AI Agents list")
         else:
             test_name = AGENT_NAME_OVERRIDE or f"QA KB Retrieval Test {int(time.time())}"
+            # never reuse a name that is already on the list (a kept agent must not look like a copy of a real one)
+            if agents.exists(test_name):
+                test_name = f"{test_name} {time.strftime('%Y%m%d-%H%M%S')}"
             description = (
                 "Answers questions using the full Knowledge Base." if AGENT_NAME_OVERRIDE
                 else "Created by verify_kb_retrieval.py — safe to delete."
@@ -351,6 +366,12 @@ def run(screenshot_dir: pathlib.Path) -> dict:
                 final_state = {name: builder.kb_is_attached(name) for name in source_names}
                 results["all_detached_at_end"] = {"ok": all(final_state.values()), "state": final_state, "kept_attached": True}
                 print("\nAgent kept — attached all sources for real use:", final_state)
+                if RUN_AGENT and not using_existing:
+                    # the shared run agent stays on the app: leave it with a normal assistant prompt, not the QA probe one
+                    builder.open_instructions(force=True)
+                    builder.set_instructions(REAL_AGENT_SYSTEM_PROMPT)
+                    results["final_instructions"] = {"ok": True, "text": REAL_AGENT_SYSTEM_PROMPT}
+                    print("Run agent finished with a normal assistant prompt in Instructions.")
             else:
                 # Leave the KB exactly as found: every source detached.
                 for name in source_names:
@@ -365,6 +386,9 @@ def run(screenshot_dir: pathlib.Path) -> dict:
             if using_existing:
                 results["cleanup"] = {"ok": agents.exists(test_name), "existing_agent": True, "agent_name": test_name}
                 print("No cleanup needed — tested against existing agent:", test_name, "| still present:", results["cleanup"]["ok"])
+            elif RUN_AGENT:
+                results["cleanup"] = {"ok": agents.exists(test_name), "shared_run_agent": True, "agent_name": test_name}
+                print("Shared run agent left in place (run_all.py keeps or deletes it):", test_name)
             elif KEEP_AGENT:
                 results["cleanup"] = {"ok": agents.exists(test_name), "kept": True, "agent_name": test_name}
                 print("Cleanup skipped (CC_KEEP_AGENT=1) — agent kept:", results["cleanup"]["ok"], "| name:", test_name)

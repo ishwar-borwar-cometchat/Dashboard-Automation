@@ -49,10 +49,13 @@ BASE_URL = os.environ.get("CC_BASE_URL", "https://app.cometchat.com")
 APP_ID = os.environ.get("CC_APP_ID", "168258051159eab49")
 STORAGE_STATE = os.environ.get("CC_STORAGE_STATE", str(ROOT / "auth" / "storage_state.json"))
 HEADLESS = os.environ.get("CC_HEADLESS", "1") != "0"
+# One fresh agent shared by every check of a run (created and deleted by run_all.py). When set, this
+# script uses it instead of creating its own throwaway agent, and never deletes it.
+RUN_AGENT = os.environ.get("CC_RUN_AGENT")
 
 TEST_INSTRUCTION = "You are a QA probe agent. Always reply with the single word: PONG"
 EXPECTED_REPLY = "PONG"
-KNOWN_KB_SOURCES = ["https://www.cometchat.com/docs", "Complete_Manual-Testing.pdf", "test"]
+KNOWN_KB_SOURCES = ["https://www.cometchat.com/docs", "Complete_Manual-Testing.pdf"]
 
 
 def run(screenshot_dir: pathlib.Path) -> dict:
@@ -71,10 +74,15 @@ def run(screenshot_dir: pathlib.Path) -> dict:
                 "Run `python3 utils/bootstrap_auth.py` to refresh it."
             )
 
-        test_name = f"QA Builder Test Agent {int(time.time())}"
-        agents.add_agent(test_name, description="Created by verify_ai_agent_builder.py — safe to delete.")
-        if not agents.exists(test_name):
-            raise RuntimeError(f"Setup failed: '{test_name}' not on the list after add_agent()")
+        if RUN_AGENT:
+            test_name = RUN_AGENT
+            if not agents.exists(test_name):
+                raise RuntimeError(f"CC_RUN_AGENT='{test_name}' not found on the AI Agents list")
+        else:
+            test_name = f"QA Builder Test Agent {int(time.time())}"
+            agents.add_agent(test_name, description="Created by verify_ai_agent_builder.py — safe to delete.")
+            if not agents.exists(test_name):
+                raise RuntimeError(f"Setup failed: '{test_name}' not on the list after add_agent()")
 
         new_page = agents.manage_agent(test_name)
         agent_id = new_page.url.rstrip("/").split("/ai-agents/")[1].split("/")[0]
@@ -140,9 +148,13 @@ def run(screenshot_dir: pathlib.Path) -> dict:
         finally:
             new_page.close()
             agents.open(force=True)
-            agents.delete_agent(test_name)
-            results["cleanup"] = {"ok": not agents.exists(test_name)}
-            print("Cleanup (test agent deleted):", results["cleanup"]["ok"])
+            if RUN_AGENT:
+                results["cleanup"] = {"ok": agents.exists(test_name), "shared_run_agent": True}
+                print("Shared run agent left in place (run_all.py keeps or deletes it):", test_name)
+            else:
+                agents.delete_agent(test_name)
+                results["cleanup"] = {"ok": not agents.exists(test_name)}
+                print("Cleanup (test agent deleted):", results["cleanup"]["ok"])
 
         ctx.close()
         browser.close()

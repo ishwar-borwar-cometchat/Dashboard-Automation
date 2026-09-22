@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3 \"Automation Script/AI Agents/verify_kb_retrieval.py\":*)"
+      "Bash(python3 \"Automation Script/AI Agents/verify_kb_retrieval.py\":*)",
+      "Bash(python3 \"Automation Script/AI Agents/verify_kb_retrieval.py\":*)",
+      "Bash(python3 modules/products/ai_agents/*:*)",
+      "Bash(python3 \"modules/products/chat_and_messaging/Feature ( Extensions)/*\":*)"
     ]
   }
 }

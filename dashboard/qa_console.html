@@ -479,6 +479,23 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .rn-btn.primary, :root:not([data-theme="light"]) .rn-btn.primary:hover{ color:#0d0d16; } }
 :root[data-theme="dark"] .rn-btn.primary, :root[data-theme="dark"] .rn-btn.primary:hover{ color:#0d0d16; }
 
+.rn-apps{ border:1px solid var(--border-soft); border-radius:var(--radius-sm); background:var(--surface-alt); margin:-2px 0 12px; padding:10px 10px 8px; }
+.rn-apps-h{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.rn-apps-h b{ font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); white-space:nowrap; }
+.rn-apps-h input{ flex:1; min-width:0; font:inherit; font-size:12.5px; padding:6px 10px; color:var(--text); background:var(--surface); border:1px solid var(--border-soft); border-radius:8px; outline:none; }
+.rn-apps-h input:focus{ border-color:var(--accent); }
+.rn-apps-n{ font-size:11.5px; font-weight:700; color:var(--text-muted); white-space:nowrap; }
+.rn-apps-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px; max-height:236px; overflow-y:auto; padding:2px 2px 4px 0; }
+.rn-app{ position:relative; text-align:left; font:inherit; color:inherit; background:var(--surface); border:1px solid var(--border-soft); border-radius:9px; padding:8px 62px 8px 10px; cursor:pointer; min-width:0; }
+.rn-app:hover{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+.rn-app.sel{ border-color:var(--accent); background:var(--accent-soft); }
+.rn-app-n{ font-size:12.5px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rn-app-m{ display:flex; align-items:center; gap:6px; margin-top:3px; min-width:0; }
+.rn-app-m em{ font-style:normal; font-size:9.5px; font-weight:800; letter-spacing:.05em; color:var(--text-muted); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:5px; padding:0 5px; flex:none; }
+.rn-app-i{ font-family:'JetBrains Mono',ui-monospace,Consolas,monospace; font-size:11px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rn-app-cp{ position:absolute; top:50%; right:8px; transform:translateY(-50%); font:inherit; font-size:11px; font-weight:700; padding:4px 9px; border-radius:7px; border:1px solid var(--border); background:var(--surface-alt); color:var(--text); cursor:pointer; }
+.rn-app-cp:hover{ border-color:var(--accent); color:var(--accent); }
+.rn-apps-none{ font-size:12px; color:var(--text-muted); padding:6px 2px; }
 .rn-count{ margin-left:auto; align-self:center; font-size:12px; font-weight:700; color:var(--text-muted); }
 .rn-filter input{ font:inherit; font-size:12.5px; width:100%; padding:8px 11px; margin-bottom:8px; color:var(--text); background:var(--surface-alt); border:1px solid var(--border-soft); border-radius:var(--radius-sm); outline:none; }
 .rn-filter input:focus{ border-color:var(--accent); }
@@ -621,9 +638,10 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
           <h2>New run</h2>
           <p class="rn-sub">No keys or passwords go in this form — Claude reads the Auth Key from the app's own Credentials page, and your Dashboard login stays on your machine.</p>
           <div class="rn-row">
-            <div class="rn-field"><label for="rnApp">App ID</label><input type="text" id="rnApp" placeholder="e.g. 168287007e590ab24" spellcheck="false" maxlength="40"></div>
+            <div class="rn-field"><label for="rnApp">App ID</label><input type="text" id="rnApp" list="rnAppList" placeholder="e.g. 168287007e590ab24" spellcheck="false" maxlength="40"><datalist id="rnAppList"></datalist></div>
             <div class="rn-field"><label for="rnRegion">Region</label><select id="rnRegion"><option value="eu">EU</option><option value="us">US</option><option value="in">IN</option></select></div>
           </div>
+          <div class="rn-apps" id="rnApps" hidden></div>
           <div class="rn-field"><span class="rn-legend">Environment</span>
             <div class="rn-seg"><label><input type="radio" name="rnEnv" value="production" checked><span>Production</span></label><label><input type="radio" name="rnEnv" value="staging"><span>Staging</span></label></div>
           </div>
@@ -1799,7 +1817,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
       { key: 'ai_variables', label: 'Variables — create, use in instructions, substitution' },
       { key: 'ai_kb', label: 'Knowledge Base retrieval', hint: 'Adds the standard sources first if the app has none' } ] },
   ];
-  const runState = { open: false, mode: 'form', runs: [], busy: false, catalog: DEFAULT_CATALOG, sel: new Set(), openGroups: new Set(), selInit: false, filter: '' };
+  const runState = { open: false, mode: 'form', runs: [], busy: false, catalog: DEFAULT_CATALOG, sel: new Set(), openGroups: new Set(), selInit: false, filter: '', apps: [] };
 
   function runSecretLike(txt){ return /[A-Za-z0-9_\-]{32,}/.test(txt || ''); }
   function runItems(){ return runState.catalog.flatMap(g => (g.items || []).map(x => ({ ...x, g: g.group }))); }
@@ -1843,12 +1861,50 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
   function runSyncEnv(){ el('rnUrlWrap').hidden = runEnv() !== 'staging'; }
   function setRunMsg(t, kind){ const m = el('rnMsg'); m.textContent = t || ''; m.dataset.kind = kind || ''; }
 
+  async function copyText(text){
+    try { await navigator.clipboard.writeText(text); return true; } catch(e){}
+    const t = document.createElement('textarea'); t.value = text; t.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+    document.body.appendChild(t); t.select(); let ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){}
+    t.remove(); return ok;
+  }
+  // Saved apps: db 'runapps/<appId>' = {appId, name, region, lastUsed}. Click a tile to fill the form; Copy copies the ID.
+  function renderRunApps(){
+    const box = el('rnApps'), dl = el('rnAppList');
+    const apps = runState.apps.slice().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+    dl.innerHTML = apps.map(a => `<option value="${esc(a.appId)}">${esc(a.name || '')}${a.region ? ' · ' + esc(String(a.region).toUpperCase()) : ''}</option>`).join('');
+    if (!apps.length){ box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    if (!el('rnAppsQ')){
+      box.innerHTML = '<div class="rn-apps-h"><b>Saved apps</b><input type="text" id="rnAppsQ" placeholder="Search by name or ID…" spellcheck="false" autocomplete="off"><span class="rn-apps-n" id="rnAppsN"></span></div><div class="rn-apps-grid" id="rnAppsGrid"></div>';
+      el('rnAppsQ').addEventListener('input', renderRunApps);
+    }
+    el('rnAppsQ').hidden = apps.length < 6;
+    const q = el('rnAppsQ').value.trim().toLowerCase();
+    const shown = q ? apps.filter(a => (a.name || '').toLowerCase().includes(q) || a.appId.includes(q) || (a.region || '').toLowerCase() === q) : apps;
+    el('rnAppsN').textContent = q ? `${shown.length} of ${apps.length}` : `${apps.length} app${apps.length === 1 ? '' : 's'}`;
+    const cur = el('rnApp').value.trim().toLowerCase();
+    const grid = el('rnAppsGrid');
+    grid.innerHTML = shown.length ? shown.map(a => `<div class="rn-app${a.appId === cur ? ' sel' : ''}" data-id="${esc(a.appId)}" role="button" tabindex="0" title="${esc((a.name || 'App').replace(/"/g, ''))} — click to use">
+      <div class="rn-app-n">${esc(a.name || 'App')}</div>
+      <div class="rn-app-m">${a.region ? `<em>${esc(String(a.region).toUpperCase())}</em>` : ''}<span class="rn-app-i">${esc(a.appId)}</span></div>
+      <button type="button" class="rn-app-cp">Copy</button></div>`).join('') : '<div class="rn-apps-none">No saved app matches.</div>';
+    grid.querySelectorAll('.rn-app').forEach(row => {
+      const a = runState.apps.find(x => x.appId === row.dataset.id); if (!a) return;
+      const use = () => { el('rnApp').value = a.appId; if (a.region) el('rnRegion').value = a.region; setRunMsg('', ''); renderRunApps(); };
+      row.addEventListener('click', use);
+      row.addEventListener('keydown', e => { if (e.target === row && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); use(); } });
+      const cb = row.querySelector('.rn-app-cp');
+      cb.addEventListener('click', async e => { e.stopPropagation(); const ok = await copyText(a.appId); cb.textContent = ok ? 'Copied' : 'Select ID'; setTimeout(() => { cb.textContent = 'Copy'; }, 1400); });
+    });
+  }
+
   function sortedRuns(){ return runState.runs.slice().sort((a, b) => (b.requestedAt || 0) - (a.requestedAt || 0)); }
 
   function prefillRunForm(){
     const last = sortedRuns()[0];
     if (!last) return;
-    if (!el('rnApp').value){                                   // never pre-fill the App ID: each run names its app
+    if (!el('rnApp').value){                                   // only pre-fill the other fields when the App ID is empty
       el('rnRegion').value = last.region || 'eu';
       const r = document.querySelector(`input[name="rnEnv"][value="${last.env === 'staging' ? 'staging' : 'production'}"]`); if (r) r.checked = true;
       el('rnUrl').value = last.env === 'staging' ? (last.baseUrl || '') : '';
@@ -1921,7 +1977,9 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
         appId, region: el('rnRegion').value, env, baseUrl, conversationType: el('rnConvType').value, scripts, notes,
         status: 'pending', requestedAt: Date.now(), resultSummary: '', resultsAppId: '',
       });
-      el('rnApp').value = ''; el('rnNotes').value = '';
+      el('rnNotes').value = '';                               // the App ID stays in the box for the next request
+      const known = runState.apps.find(x => x.appId === appId);
+      try { await db.doc('runapps/' + appId).set({ appId, name: (known && known.name) || '', region: el('rnRegion').value, lastUsed: Date.now() }); } catch (e2) { /* remembering the app is optional */ }
       setRunMsg('Request saved. Now tell Claude "run" and it will pick this up.', 'ok');
     } catch (err) {
       setRunMsg(err && err.code === 'invalid_argument' ? "Can't save: view-only access." : "Couldn't save the request — try again.", 'err');
@@ -2014,6 +2072,7 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
     el('moduleTabs').addEventListener('click', () => { if (runState.open) closeRun(); }, true);
     document.querySelectorAll('input[name="rnEnv"]').forEach(r => r.addEventListener('change', runSyncEnv));
     el('rnForm').addEventListener('submit', submitRun);
+    el('rnApp').addEventListener('input', () => { if (el('rnAppsQ')) renderRunApps(); });
     el('rnForm').querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
       runSetChecked(b.dataset.preset === 'all' ? runItems().map(x => x.key) : []);
     }));
@@ -2024,6 +2083,10 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
       if (!runState.selInit){ runState.sel = new Set(runItems().map(x => x.key)); runState.selInit = true; }   // first load: everything ticked
       renderRunCatalog();
     }, err => { console.error('runcatalog', err); });
+    db.collection('runapps').onSnapshot(snap => {
+      runState.apps = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.appId);
+      renderRunApps();
+    }, err => { console.error('runapps', err); });
     db.collection('runs').onSnapshot(snap => {
       runState.runs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (runState.open) renderRunHistory();

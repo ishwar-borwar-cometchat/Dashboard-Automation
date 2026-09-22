@@ -19,7 +19,7 @@ SCENARIO = "Overview - Page Load"
     expected="All sections visible: Get Started, Usage, Operational Data, Charts, Credentials, Quick Links",
 )
 def test_ov_001_overview_page_loads(raw_overview):
-    ov = raw_overview.open()
+    ov = raw_overview.open(force=True)  # this case is specifically about a fresh load
 
     assert "/overview" in ov.page.url, f"Not on Overview URL: {ov.page.url}"
 

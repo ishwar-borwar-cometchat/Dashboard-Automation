@@ -55,6 +55,8 @@ BASE_URL = os.environ.get("CC_BASE_URL", "https://app.cometchat.com")
 APP_ID = os.environ.get("CC_APP_ID", "168258051159eab49")
 STORAGE_STATE = os.environ.get("CC_STORAGE_STATE", str(ROOT / "auth" / "storage_state.json"))
 HEADLESS = os.environ.get("CC_HEADLESS", "1") != "0"
+# One fresh agent shared by every check of a run (see run_all.py); never deleted here.
+RUN_AGENT = os.environ.get("CC_RUN_AGENT")
 
 VAR_NAME = "supportEmail"
 VAR_VALUE = "support@cometchat.com"
@@ -117,10 +119,15 @@ def run(screenshot_dir: pathlib.Path) -> dict:
                 "Run `python3 utils/bootstrap_auth.py` to refresh it."
             )
 
-        test_name = f"QA Variable Substitution Test {int(time.time())}"
-        agents.add_agent(test_name, description="Created by verify_variable_substitution.py — safe to delete.")
-        if not agents.exists(test_name):
-            raise RuntimeError(f"Setup failed: '{test_name}' not on the list after add_agent()")
+        if RUN_AGENT:
+            test_name = RUN_AGENT
+            if not agents.exists(test_name):
+                raise RuntimeError(f"CC_RUN_AGENT='{test_name}' not found on the AI Agents list")
+        else:
+            test_name = f"QA Variable Substitution Test {int(time.time())}"
+            agents.add_agent(test_name, description="Created by verify_variable_substitution.py — safe to delete.")
+            if not agents.exists(test_name):
+                raise RuntimeError(f"Setup failed: '{test_name}' not on the list after add_agent()")
 
         new_page = agents.manage_agent(test_name)
         agent_id = new_page.url.rstrip("/").split("/ai-agents/")[1].split("/")[0]
@@ -223,13 +230,21 @@ def run(screenshot_dir: pathlib.Path) -> dict:
                 builder.open_custom_variables_tab()
                 builder.delete_custom_variable(VAR_NAME)
                 var_gone = VAR_NAME not in builder.custom_variable_names()
+                if not var_gone:
+                    # the table can still be showing the pre-delete render right after the confirm click
+                    # (seen live 2026-09-22) — one more look after a beat before calling it a real leftover.
+                    new_page.wait_for_timeout(2_000)
+                    var_gone = VAR_NAME not in builder.custom_variable_names()
             except Exception as e:
                 cleanup_error = str(e)
                 var_gone = False
             new_page.close()
             agents.open(force=True)
-            agents.delete_agent(test_name)
-            agent_gone = not agents.exists(test_name)
+            if RUN_AGENT:
+                agent_gone = agents.exists(test_name)      # shared run agent: it must still be there; run_all.py keeps or deletes it
+            else:
+                agents.delete_agent(test_name)
+                agent_gone = not agents.exists(test_name)
             results["cleanup"] = {"ok": var_gone and agent_gone, "variable_deleted": var_gone, "agent_deleted": agent_gone, "error": cleanup_error}
             print("Cleanup (variable + agent deleted):", results["cleanup"]["ok"])
 

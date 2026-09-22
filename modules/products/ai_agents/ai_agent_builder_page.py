@@ -100,8 +100,18 @@ class AIAgentBuilderPage(BasePage):
         """
         editor = self.page.locator(SELECTORS["instructions_editor"])
         editor.click()
-        self.page.keyboard.press("Control+A")
+        # "Select all" is Cmd+A on a Mac and Ctrl+A elsewhere. Plain Control+A on a Mac only moves the cursor to
+        # the start of the line, which left the OLD prompt in place behind the new one on any agent that already
+        # had instructions. ControlOrMeta picks the right key, and Backspace clears the selection.
+        self.page.keyboard.press("ControlOrMeta+A")
+        self.page.keyboard.press("Backspace")
         self.page.keyboard.type(text)
+        typed = " ".join(editor.inner_text().split())
+        if " ".join(text.split()) not in typed or len(typed) > len(" ".join(text.split())) + 5:
+            raise RuntimeError(
+                "The Instructions editor does not hold exactly the new text (old text left behind?): "
+                f"expected {text[:60]!r}, editor shows {typed[:100]!r}"
+            )
         self.page.get_by_text("Save & Run", exact=True).click()
         self.page.wait_for_timeout(2_000)
 
@@ -138,9 +148,13 @@ class AIAgentBuilderPage(BasePage):
     def _kb_row(self, source_name: str):
         # get_by_text with exact=False substring-matches case-insensitively
         # (e.g. "test" matches inside "Complete_Manual-Testing.pdf") —
-        # exact=True on the specific name cell avoids that.
+        # exact=True on the specific name cell avoids that. Some apps have
+        # the SAME source name added more than once (a real data duplicate,
+        # not a script bug) — .first keeps this from raising a Playwright
+        # strict-mode error; it always resolves to the same row (the first
+        # one in table order) across calls within one page.
         cell = self.page.get_by_text(source_name, exact=True)
-        return cell.locator("xpath=ancestor::tr")
+        return cell.locator("xpath=ancestor::tr").first
 
     def kb_is_attached(self, source_name: str) -> bool:
         switch = self._kb_row(source_name).locator(SELECTORS["kb_attach_switch"])
@@ -161,6 +175,21 @@ class AIAgentBuilderPage(BasePage):
             return
         self._kb_row(source_name).locator(SELECTORS["kb_attach_switch"]).click()
         self.page.wait_for_timeout(1_500)
+
+    def delete_source(self, source_name: str) -> None:
+        """Delete a Knowledge Base source from the whole app (PERMANENT — sources are shared by every agent).
+        Clicks the row's trash icon, answers "Do you want to delete this source?" with Yes, then waits until the
+        row is gone. Raises if it is still listed afterwards.
+        """
+        row = self._kb_row(source_name)
+        if row.count() != 1:
+            raise RuntimeError(f"Expected exactly one Knowledge Base row named {source_name!r}, found {row.count()}")
+        row.locator(".style_actionButtons__b9l1r button, td:last-child button").last.click()
+        self.page.locator(".ant-popover:visible button:has-text('Yes')").click()
+        self.page.wait_for_timeout(2_500)
+        self.open_knowledge_base(force=True)
+        if source_name in self.kb_source_names():
+            raise RuntimeError(f"{source_name!r} is still on the Knowledge Base list after delete_source()")
 
     # ------------------------------------------------------------------
     # Knowledge Base — add a new Text source (PERMANENT shared write: this
@@ -366,7 +395,7 @@ class AIAgentBuilderPage(BasePage):
     def set_instructions_with_variable_chip(self, prefix: str, var_name: str, suffix: str = "") -> None:
         editor = self.page.locator(SELECTORS["instructions_editor"])
         editor.click()
-        self.page.keyboard.press("Control+A")
+        self.page.keyboard.press("ControlOrMeta+A")
         self.page.keyboard.press("Delete")
         self.page.wait_for_timeout(300)
 

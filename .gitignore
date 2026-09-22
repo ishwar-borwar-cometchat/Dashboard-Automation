@@ -1,4 +1,5 @@
 auth/storage_state.json
+auth/storage_state*.json
 curl.txt
 storage.json
 artifacts/
