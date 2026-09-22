@@ -298,6 +298,7 @@ pre{ font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.55; p
 .item-row .txt{ display:flex; flex-direction:column; min-width:0; overflow:hidden; }
 .item-row .nm{ font-size:12.5px; font-weight:700; color:var(--text); }
 .item-row .sm{ font-size:11.5px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:1px; }
+.item-row.st-warn .sm{ white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; color:var(--warning-ink); font-weight:600; }
 .item-row .badge{ font-size:10px; font-weight:700; padding:3px 9px; border-radius:6px; white-space:nowrap; }
 .item-row.st-pass .badge{ background:var(--good-soft); color:var(--good); }
 .item-row.st-warn .badge{ background:var(--warning-soft); color:var(--warning-ink); }
@@ -854,7 +855,23 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
   // (note, trace, full answer, screenshots) lives in the modal, rendered by
   // reusing the existing full-detail CARD_RENDERERS functions unchanged.
   // ---------------------------------------------------------------------
+  // Plain-English reason for a flagged/not-tested item: strip any HTML (some `reason` fields carry
+  // inline <code> tags meant for the full card), collapse whitespace, and cut it to one clear sentence
+  // rather than the whole note — the full text is still one click away in the detail card.
+  function plainReason(d){
+    const raw = (d.reason || d.note || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (!raw) return 'Flagged — open for details.';
+    const firstSentence = raw.match(/^.*?[.!?](?:\s|$)/);
+    let out = firstSentence ? firstSentence[0].trim() : raw;
+    if (out.length < 40 && raw.length > out.length){                               // a short first sentence alone can read as cut off — add the next one
+      const rest = raw.slice(out.length).match(/^\s*.*?[.!?](?:\s|$)/);
+      if (rest) out += ' ' + rest[0].trim();
+    }
+    return out.length > 220 ? out.slice(0, 217).trim() + '…' : out;
+  }
+
   function rowSummary(d){
+    if (d.status === 'warn') return plainReason(d);                                // flagged rows lead with WHY, not a technical transition/endpoint summary
     switch (d.kind){
       case 'ui-toggle':
         return `${d.off && d.off.dashboard_enabled ? 'on' : 'off'} → ${d.on && d.on.dashboard_enabled ? 'on' : 'off'}`;
