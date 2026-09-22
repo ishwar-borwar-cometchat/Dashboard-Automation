@@ -859,7 +859,11 @@ body.run-open #moduleTabs .module-tab.active .ico svg{ stroke:var(--sb-text-dim)
   // inline <code> tags meant for the full card), collapse whitespace, and cut it to one clear sentence
   // rather than the whole note — the full text is still one click away in the detail card.
   function plainReason(d){
-    const raw = (d.reason || d.note || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    let raw = (d.reason || d.note || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (!raw && d.kind === 'ui-toggle' && d.off && d.on){                          // no note written — derive it from the off/on read-back so a flag is never unexplained
+      if (d.off.match === false) raw = `Mismatch turning it OFF: the Dashboard shows it off, but the Sample App still shows ${d.off.sample_app_present ? 'it present' : (d.off.sent === false ? 'the send failing' : 'a mismatch')}.`;
+      else if (d.on.match === false) raw = `Mismatch turning it ON: the Dashboard shows it on, but the Sample App ${d.on.sample_app_present ? 'behaved unexpectedly' : 'never showed it'}.`;
+    }
     if (!raw) return 'Flagged — open for details.';
     const firstSentence = raw.match(/^.*?[.!?](?:\s|$)/);
     let out = firstSentence ? firstSentence[0].trim() : raw;
